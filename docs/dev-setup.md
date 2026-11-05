@@ -37,6 +37,16 @@ Server=(localdb)\MSSQLLocalDB;Integrated Security=true;TrustServerCertificate=tr
 
 Each test run creates a database named `UTperfume_Test_<guid>` and drops it at the end. To use a local SQL Server Developer instance instead, set the variable to its connection string with Windows authentication. Never put a password in a file.
 
+### Using a named SQL Server instance instead of LocalDB
+
+LocalDB is the default. To use another instance (for example SQL Server Express), set the environment variable for the current session only, with Windows authentication and placeholders replaced by your own values:
+
+```powershell
+$env:TestDatabase__ConnectionString = "Server=<server>\<instance>;Integrated Security=true;TrustServerCertificate=true;Encrypt=true"
+```
+
+Any `Database` or `Initial Catalog` in the string is ignored; the harness connects to `master` and creates and drops its own `UTperfume_Test_<guid>` database. Never write a real server name, connection string or credential into a file.
+
 ## 2. Azurite (local Blob Storage, no Docker)
 
 ```powershell
@@ -65,6 +75,8 @@ npx playwright install chromium
 
 On a corporate network with TLS inspection the download can fail with `UNABLE_TO_GET_ISSUER_CERT_LOCALLY`. Point Node at your corporate root certificate (`NODE_EXTRA_CA_CERTS=C:\path\to\corp-root.pem`) or set the proxy variables. Do not disable certificate verification.
 
+`web/playwright.config.ts` sets `reuseExistingServer` for local runs. If an API is already listening on port 5080 (for example from `dotnet run`), Playwright reuses it, even when it does not serve the built SPA, and the smoke test fails. Stop any local API on port 5080 before running `npx playwright test`.
+
 ## 5. Run the checks
 
 ```powershell
@@ -89,7 +101,7 @@ npx playwright test
 
 ## Verification record (architecture section 10.2)
 
-Run on 2026-11-05 on the Windows development machine (user `tnguyen739`, Node v20.11.1).
+Run on 2026-11-05 on a Windows development machine (user `<your-windows-user>`). Backend and LocalDB checks used .NET SDK 10.0.401. The frontend checks (lint, build, test) used Node v24.22.2; Node v20.11.1 is below the required 22.12 and cannot run Vite 8.
 
 | # | Check | Result |
 |---|---|---|

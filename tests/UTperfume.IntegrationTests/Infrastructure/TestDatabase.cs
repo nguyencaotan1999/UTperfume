@@ -20,7 +20,13 @@ public sealed partial class TestDatabase : IAsyncLifetime
     public TestDatabase()
     {
         var configured = Environment.GetEnvironmentVariable(EnvironmentVariable);
-        _serverConnectionString = string.IsNullOrWhiteSpace(configured) ? DefaultServerConnectionString : configured;
+        // Any Database/Initial Catalog in the supplied string is ignored: the server-level connection uses master,
+        // and the per-run database name is always generated.
+        _serverConnectionString = new SqlConnectionStringBuilder(
+            string.IsNullOrWhiteSpace(configured) ? DefaultServerConnectionString : configured)
+        {
+            InitialCatalog = "master",
+        }.ConnectionString;
         DatabaseName = $"UTperfume_Test_{Guid.NewGuid():N}";
         ConnectionString = new SqlConnectionStringBuilder(_serverConnectionString)
         {
