@@ -1,0 +1,56 @@
+# Visual Studio / .NET
+.vs/
+*.user
+*.suo
+*.userprefs
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+TestResults/
+artifacts/
+*.log
+*.binlog
+*.pubxml
+*.pubxml.user
+PublishProfiles/
+*.publish.xml
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Local configuration and secrets
+appsettings.*.local.json
+.env
+.env.*
+!.env.example
+*.pfx
+*.p12
+secrets.json
+
+# Azurite
+.azurite/
+__azurite_db_*.json
+__blobstorage__/
+__queuestorage__/
+
+# Node / Vite
+node_modules/
+web/dist/
+web/coverage/
+*.tsbuildinfo
+npm-debug.log*
+
+# Playwright
+web/test-results/
+web/playwright-report/
+web/blob-report/
+web/playwright/.cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# SPA build output copied into the API (keep the folder)
+src/UTperfume.Api/wwwroot/*
+!src/UTperfume.Api/wwwroot/.gitkeep

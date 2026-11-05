@@ -1,0 +1,16 @@
+* text=auto eol=lf
+*.sln text eol=crlf
+*.slnx text eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+openapi/v1.json text eol=lf
+web/src/api/schema.d.ts text eol=lf linguist-generated=true
+openapi/v1.json linguist-generated=true

@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/UTperfume.Api/UTperfume.Api.csproj" />
+    <Project Path="src/UTperfume.Application/UTperfume.Application.csproj" />
+    <Project Path="src/UTperfume.Infrastructure/UTperfume.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/UTperfume.IntegrationTests/UTperfume.IntegrationTests.csproj" />
+    <Project Path="tests/UTperfume.UnitTests/UTperfume.UnitTests.csproj" />
+  </Folder>
+</Solution>

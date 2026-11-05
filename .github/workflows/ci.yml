@@ -1,0 +1,149 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+
+jobs:
+  backend:
+    name: Backend (build, test)
+    runs-on: ubuntu-latest
+    services:
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: ${{ secrets.CI_SQL_SA_PASSWORD }}
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P $MSSQL_SA_PASSWORD -Q 'SELECT 1'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+          --health-start-period 20s
+    env:
+      # Built here from the repository secret. The password is never written to a file.
+      TestDatabase__ConnectionString: Server=localhost,1433;User Id=sa;Password=${{ secrets.CI_SQL_SA_PASSWORD }};TrustServerCertificate=true;Encrypt=false;Connect Timeout=60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Restore
+        run: dotnet restore
+      - name: Build
+        run: dotnet build -c Release --no-restore
+      - name: Test
+        run: dotnet test -c Release --no-build
+      - name: OpenAPI document is up to date
+        run: git diff --exit-code -- openapi/
+
+  frontend:
+    name: Frontend (lint, build, test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - run: npm run test
+
+  contract:
+    name: Contract drift (openapi + schema.d.ts)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Regenerate openapi/v1.json
+        run: dotnet build -c Release
+      - name: Regenerate web/src/api/schema.d.ts
+        working-directory: web
+        run: |
+          npm ci
+          npm run generate:api
+      - name: Fail on drift
+        run: git diff --exit-code -- openapi/ web/src/api/schema.d.ts
+
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    services:
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: ${{ secrets.CI_SQL_SA_PASSWORD }}
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P $MSSQL_SA_PASSWORD -Q 'SELECT 1'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+          --health-start-period 20s
+    env:
+      TestDatabase__ConnectionString: Server=localhost,1433;User Id=sa;Password=${{ secrets.CI_SQL_SA_PASSWORD }};TrustServerCertificate=true;Encrypt=false;Connect Timeout=60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Start Azurite (no Docker)
+        run: |
+          npx --yes azurite --location "$RUNNER_TEMP/azurite" --silent --skipApiVersionCheck &
+          for i in $(seq 1 30); do
+            (echo > /dev/tcp/127.0.0.1/10000) 2>/dev/null && exit 0
+            sleep 1
+          done
+          echo "Azurite did not start" >&2
+          exit 1
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci
+      - name: Install Playwright Chromium
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+      - name: Run Playwright
+        working-directory: web
+        run: npx playwright test
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: web/playwright-report
+          retention-days: 7
