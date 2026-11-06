@@ -20,13 +20,19 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     private readonly string _environment;
     private readonly string _webRoot;
     private readonly bool _useProjectWebRoot;
+    private readonly bool _includeAdminTestRoutes;
+    private readonly Action<IServiceCollection>? _configureServices;
 
     public ApiFactory(
         TestDatabase database,
         IReadOnlyDictionary<string, string?>? overrides = null,
         string environment = "Testing",
-        bool useProjectWebRoot = false)
+        bool useProjectWebRoot = false,
+        bool includeAdminTestRoutes = false,
+        Action<IServiceCollection>? configureServices = null)
     {
+        _configureServices = configureServices;
+        _includeAdminTestRoutes = includeAdminTestRoutes;
         _database = database;
         _overrides = overrides ?? new Dictionary<string, string?>();
         _environment = environment;
@@ -37,6 +43,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     }
 
     public InMemoryImageStorage ImageStorage { get; } = new();
+
+    public CapturingLoggerProvider Logs { get; } = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -70,6 +78,14 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         {
             services.RemoveAll<IImageStorage>();
             services.AddSingleton<IImageStorage>(ImageStorage);
+            services.AddSingleton<Microsoft.Extensions.Logging.ILoggerProvider>(Logs);
+            if (_includeAdminTestRoutes)
+            {
+                // Test-host only (P4-08): never registered by production code.
+                services.AddSingleton<UTperfume.Api.Endpoints.Admin.IAdminRouteContributor, TestAdminRoutes>();
+            }
+
+            _configureServices?.Invoke(services);
 
             services.AddAuthentication()
                 .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, null);

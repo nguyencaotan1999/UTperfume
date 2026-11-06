@@ -39,6 +39,7 @@ public static class DependencyInjection
             options.UseSqlServer(connection, sql => sql.MigrationsAssembly(typeof(AppDbContext).Assembly.GetName().Name));
         });
         services.AddScoped<ICatalogDbContext>(static sp => sp.GetRequiredService<AppDbContext>());
+        services.AddScoped<IAdminWriteSession, AdminWriteSession>();
 
         return services;
     }

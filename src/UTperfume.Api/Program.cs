@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using UTperfume.Api.Endpoints;
+using UTperfume.Api.Endpoints.Admin;
 using UTperfume.Api.Infrastructure;
 using UTperfume.Application;
 using UTperfume.Application.Common;
@@ -20,6 +21,7 @@ builder.Services.ConfigureHttpJsonOptions(o =>
 builder.Services.AddOpenApi(o => o.AddOperationTransformer<PublicQueryParameterTransformer>());
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddPublicTraffic();
+builder.Services.AddAdminWriteFoundation();
 builder.Services.AddOptions<UTperfume.Application.Features.Sitemap.SitemapOptions>()
     .BindConfiguration(UTperfume.Application.Features.Sitemap.SitemapOptions.SectionName)
     .ValidateDataAnnotations()
@@ -37,7 +39,8 @@ builder.Services
     .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, ProblemDetailsAuthenticationHandler>(
         ProblemDetailsAuthenticationHandler.SchemeName, null);
 builder.Services.AddAuthorizationBuilder()
-    .SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
+    .SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build())
+    .AddAdminPolicy();
 
 builder.Services.AddHealthChecks()
     .AddCheck<DatabaseHealthCheck>("database", failureStatus: Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Unhealthy, tags: ["ready"], timeout: TimeSpan.FromSeconds(5));
@@ -113,6 +116,8 @@ publicApi.MapCategoryEndpoints();
 publicApi.MapProductEndpoints();
 publicApi.MapCatalogFilterEndpoints();
 publicApi.MapHomeEndpoints();
+
+app.MapAdminEndpoints();
 
 // Unknown /api routes must be a ProblemDetails 404, never the SPA index.html (AC-S4).
 app.Map("/api/{**path}", UnmatchedApiRoute.Handle)

@@ -18,6 +18,7 @@ public sealed class TestAuthHandler(
     public const string SchemeName = "Test";
     public const string UserHeader = "X-Test-User";
     public const string RolesHeader = "X-Test-Roles";
+    public const string EmailHeader = "X-Test-Email";
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
@@ -31,6 +32,11 @@ public sealed class TestAuthHandler(
             new(ClaimTypes.NameIdentifier, user.ToString()),
             new(ClaimTypes.Name, user.ToString()),
         };
+        if (Request.Headers.TryGetValue(EmailHeader, out var email))
+        {
+            claims.Add(new Claim(ClaimTypes.Email, email.ToString()));
+        }
+
         if (Request.Headers.TryGetValue(RolesHeader, out var roles))
         {
             claims.AddRange(roles.ToString()

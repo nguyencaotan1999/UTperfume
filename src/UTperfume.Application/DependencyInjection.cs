@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using UTperfume.Application.Common;
 using UTperfume.Application.Features.Brands;
 using UTperfume.Application.Features.CatalogFilters;
 using UTperfume.Application.Features.Home;
@@ -22,6 +23,7 @@ public static class DependencyInjection
         services.AddScoped<CatalogFilterQueries>();
         services.AddScoped<HomeQueries>();
         services.AddScoped<SitemapQueries>();
+        services.AddScoped<IAdminAudit, AdminAudit>();
         return services;
     }
 }
