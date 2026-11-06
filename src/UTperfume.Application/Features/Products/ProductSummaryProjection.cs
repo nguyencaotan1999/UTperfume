@@ -15,6 +15,7 @@ public sealed record ProductSummaryRow(
     string ConcentrationCode,
     string ConcentrationName,
     string? PrimaryImageBlobPath,
+    string? PrimaryImageAltText,
     long FromPrice,
     long? FromOriginalPrice,
     IReadOnlyList<decimal> VolumesMl,
@@ -61,6 +62,8 @@ public static class ProductSummaryProjection
                 p.Concentration.Name,
                 p.Images.OrderByDescending(i => i.IsPrimary).ThenBy(i => i.SortOrder).ThenBy(i => i.Id)
                     .Select(i => i.BlobPath).FirstOrDefault(),
+                p.Images.OrderByDescending(i => i.IsPrimary).ThenBy(i => i.SortOrder).ThenBy(i => i.Id)
+                    .Select(i => i.AltText).FirstOrDefault(),
                 p.Variants.Where(v => v.IsActive && volumes.Contains(v.VolumeMl)).Min(v => (long?)v.Price) ?? 0,
                 p.Variants.Where(v => v.IsActive && volumes.Contains(v.VolumeMl))
                     .OrderBy(v => v.Price).ThenBy(v => v.VolumeMl).Select(v => v.OriginalPrice).FirstOrDefault(),
@@ -79,6 +82,8 @@ public static class ProductSummaryProjection
             p.Concentration.Name,
             p.Images.OrderByDescending(i => i.IsPrimary).ThenBy(i => i.SortOrder).ThenBy(i => i.Id)
                 .Select(i => i.BlobPath).FirstOrDefault(),
+            p.Images.OrderByDescending(i => i.IsPrimary).ThenBy(i => i.SortOrder).ThenBy(i => i.Id)
+                .Select(i => i.AltText).FirstOrDefault(),
             p.Variants.Where(v => v.IsActive).Min(v => (long?)v.Price) ?? 0,
             p.Variants.Where(v => v.IsActive)
                 .OrderBy(v => v.Price).ThenBy(v => v.VolumeMl).Select(v => v.OriginalPrice).FirstOrDefault(),
@@ -108,5 +113,66 @@ public static class ProductSummaryProjection
                 v.StockQuantity <= 0 ? AvailabilityStatus.OutOfStock
                     : v.StockQuantity <= lowStockThreshold ? AvailabilityStatus.LowStock
                     : AvailabilityStatus.InStock));
+    }
+}
+
+/// <summary>
+/// Price filter and price sort on the visibility-filtered product query. The from-price expression is the same one
+/// used by <see cref="ProductSummaryProjection.ToSummaryRows"/> (BR-11, BR-12): the minimum price over active variants,
+/// restricted to the selected volumes when a volume filter is applied. EF cannot translate predicates over the
+/// projected record, so the expression is repeated here at entity level and covered by tests.
+/// </summary>
+public static class ProductPriceQueries
+{
+    public static IQueryable<Product> WherePriceBetween(
+        this IQueryable<Product> products, long? minPrice, long? maxPrice, IReadOnlyCollection<decimal>? volumesMl)
+    {
+        ArgumentNullException.ThrowIfNull(products);
+
+        if (volumesMl is { Count: > 0 })
+        {
+            var volumes = volumesMl.ToArray();
+            if (minPrice is { } min)
+            {
+                products = products.Where(p => p.Variants.Where(v => v.IsActive && volumes.Contains(v.VolumeMl)).Min(v => (long?)v.Price) >= min);
+            }
+
+            if (maxPrice is { } max)
+            {
+                products = products.Where(p => p.Variants.Where(v => v.IsActive && volumes.Contains(v.VolumeMl)).Min(v => (long?)v.Price) <= max);
+            }
+
+            return products;
+        }
+
+        if (minPrice is { } minAll)
+        {
+            products = products.Where(p => p.Variants.Where(v => v.IsActive).Min(v => (long?)v.Price) >= minAll);
+        }
+
+        if (maxPrice is { } maxAll)
+        {
+            products = products.Where(p => p.Variants.Where(v => v.IsActive).Min(v => (long?)v.Price) <= maxAll);
+        }
+
+        return products;
+    }
+
+    public static IQueryable<Product> OrderByFromPrice(
+        this IQueryable<Product> products, bool descending, IReadOnlyCollection<decimal>? volumesMl)
+    {
+        ArgumentNullException.ThrowIfNull(products);
+
+        if (volumesMl is { Count: > 0 })
+        {
+            var volumes = volumesMl.ToArray();
+            return descending
+                ? products.OrderByDescending(p => p.Variants.Where(v => v.IsActive && volumes.Contains(v.VolumeMl)).Min(v => (long?)v.Price)).ThenBy(p => p.Id)
+                : products.OrderBy(p => p.Variants.Where(v => v.IsActive && volumes.Contains(v.VolumeMl)).Min(v => (long?)v.Price)).ThenBy(p => p.Id);
+        }
+
+        return descending
+            ? products.OrderByDescending(p => p.Variants.Where(v => v.IsActive).Min(v => (long?)v.Price)).ThenBy(p => p.Id)
+            : products.OrderBy(p => p.Variants.Where(v => v.IsActive).Min(v => (long?)v.Price)).ThenBy(p => p.Id);
     }
 }

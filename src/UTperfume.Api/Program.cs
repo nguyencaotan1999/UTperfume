@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
+using UTperfume.Api.Endpoints;
 using UTperfume.Api.Infrastructure;
+using UTperfume.Application;
 using UTperfume.Application.Common;
 using UTperfume.Infrastructure;
 
@@ -7,8 +9,23 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddApiProblemDetails();
 builder.Services.AddValidation();
-builder.Services.AddOpenApi();
+builder.Services.AddCatalogFeatures();
+builder.Services.ConfigureHttpJsonOptions(o =>
+{
+    o.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+    // Strict: numbers are JSON numbers only. The default (AllowReadingFromString) made the OpenAPI generator
+    // describe every integer as "integer or string", which leaks into the generated TypeScript types.
+    o.SerializerOptions.NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.Strict;
+});
+builder.Services.AddOpenApi(o => o.AddOperationTransformer<PublicQueryParameterTransformer>());
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddPublicTraffic();
+builder.Services.AddOptions<UTperfume.Application.Features.Sitemap.SitemapOptions>()
+    .BindConfiguration(UTperfume.Application.Features.Sitemap.SitemapOptions.SectionName)
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+builder.Services.AddSingleton<Microsoft.Extensions.Options.IValidateOptions<StoreOptions>, StoreOptionsValidator>();
+builder.Services.AddOptions<StoreOptions>().BindConfiguration(StoreOptions.SectionName);
 
 builder.Services.AddOptions<CatalogOptions>()
     .BindConfiguration(CatalogOptions.SectionName)
@@ -22,7 +39,8 @@ builder.Services
 builder.Services.AddAuthorizationBuilder()
     .SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
 
-builder.Services.AddHealthChecks();
+builder.Services.AddHealthChecks()
+    .AddCheck<DatabaseHealthCheck>("database", failureStatus: Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Unhealthy, tags: ["ready"], timeout: TimeSpan.FromSeconds(5));
 builder.Services.AddInfrastructure(builder.Configuration);
 
 // Fail fast on a missing or invalid storage configuration. The build-time OpenAPI generator
@@ -32,6 +50,8 @@ var isOpenApiGeneration = string.Equals(
 if (!isOpenApiGeneration)
 {
     builder.Services.AddOptions<UTperfume.Infrastructure.Storage.ImageStorageOptions>().ValidateOnStart();
+    // Outside Development a missing or malformed Store:PublicBaseUrl stops the start-up with a clear message.
+    builder.Services.AddOptions<StoreOptions>().ValidateOnStart();
 }
 
 if (builder.Environment.IsDevelopment())
@@ -54,6 +74,7 @@ if (!app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseSecurityHeaders(contentSecurityPolicy);
+app.UseApiCacheControl();
 app.UseStatusCodePages();
 app.UseDefaultFiles();
 app.UseStaticFiles();
@@ -63,16 +84,35 @@ app.UseStaticFiles();
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
+// The limiter runs before the output cache, so cached responses still count against the limit (AC-X3).
+app.UseRateLimiter();
+app.UseOutputCache();
 
 app.MapOpenApi().AllowAnonymous();
 
-app.MapHealthChecks("/health/live", new() { Predicate = static _ => false }).AllowAnonymous();
+app.MapHealthChecks("/health/live", new() { Predicate = static _ => false }).AllowAnonymous()
+    .WithMetadata(new Microsoft.AspNetCore.Routing.HttpMethodMetadata(["GET", "HEAD"]));
 
-var publicApi = app.MapGroup("/api/v1").AllowAnonymous();
+// E11 readiness: checks the database and answers 503 (Unhealthy) when it is down. The body is the bare status, never details.
+app.MapHealthChecks("/health/ready", new() { Predicate = static r => r.Tags.Contains("ready") }).AllowAnonymous()
+    .WithMetadata(new Microsoft.AspNetCore.Routing.HttpMethodMetadata(["GET", "HEAD"]));
+
+app.MapSitemapEndpoints();
+
+var publicApi = app.MapGroup("/api/v1").AllowAnonymous()
+    .RequireRateLimiting(PublicTrafficSetup.PolicyName)
+    .CacheOutput(PublicTrafficSetup.PolicyName)
+    .ProducesProblem(StatusCodes.Status429TooManyRequests);
 publicApi.MapGet("/health", () => TypedResults.Ok(new HealthResponse("ok")))
     .WithName("GetHealth")
     .WithTags("Health")
     .Produces<HealthResponse>();
+
+publicApi.MapBrandEndpoints();
+publicApi.MapCategoryEndpoints();
+publicApi.MapProductEndpoints();
+publicApi.MapCatalogFilterEndpoints();
+publicApi.MapHomeEndpoints();
 
 // Unknown /api routes must be a ProblemDetails 404, never the SPA index.html (AC-S4).
 app.Map("/api/{**path}", UnmatchedApiRoute.Handle)

@@ -20,12 +20,333 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/catalog/filters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["GetCatalogFilters"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/home": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["GetHome"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/brands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ListBrands"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/brands/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["GetBrand"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ListCategories"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/categories/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["GetCategory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["SearchProducts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/products/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["GetProduct"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/products/{slug}/related": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["GetRelatedProducts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @enum {unknown} */
+        AvailabilityStatus: "OutOfStock" | "LowStock" | "InStock";
+        BannerDto: {
+            title: string;
+            subtitle: null | string;
+            imageUrl: string;
+            altText: string;
+            linkUrl: null | string;
+        };
+        BrandDetail: {
+            slug: string;
+            name: string;
+            description: null | string;
+            logoUrl: null | string;
+            /** Format: int32 */
+            productCount: number;
+        };
+        BrandRef: {
+            slug: string;
+            name: string;
+        };
+        BrandSummary: {
+            slug: string;
+            name: string;
+            logoUrl: null | string;
+            /** Format: int32 */
+            productCount: number;
+        };
+        CatalogFilters: {
+            brands: components["schemas"]["BrandRef"][];
+            categories: components["schemas"]["CategoryRef"][];
+            concentrations: components["schemas"]["ConcentrationRef"][];
+            volumesMl: number[];
+            priceRange: null | components["schemas"]["PriceRange"];
+            sortOptions: string[];
+            currency?: null | string;
+        };
+        CategoryDetail: {
+            slug: string;
+            name: string;
+            description: null | string;
+            imageUrl: null | string;
+            /** Format: int32 */
+            productCount: number;
+        };
+        CategoryRef: {
+            slug: string;
+            name: string;
+        };
+        CategorySummary: {
+            slug: string;
+            name: string;
+            imageUrl: null | string;
+            /** Format: int32 */
+            productCount: number;
+        };
+        ConcentrationRef: {
+            code: string;
+            name: string;
+        };
         HealthResponse: {
             status: string;
+        };
+        HomeResponse: {
+            banners: components["schemas"]["BannerDto"][];
+            featuredProducts: components["schemas"]["ProductSummary"][];
+            newArrivals: components["schemas"]["ProductSummary"][];
+            bestSellers: components["schemas"]["ProductSummary"][];
+            popularBrands: components["schemas"]["BrandSummary"][];
+            categories: components["schemas"]["CategorySummary"][];
+        };
+        HttpValidationProblemDetails: {
+            type?: null | string;
+            title?: null | string;
+            /** Format: int32 */
+            status?: null | number;
+            detail?: null | string;
+            instance?: null | string;
+            errors?: {
+                [key: string]: string[];
+            };
+        };
+        ImageDto: {
+            url: string;
+            altText: null | string;
+        };
+        NoteRef: {
+            slug: string;
+            name: string;
+        };
+        PagedResultOfProductSummary: {
+            items: components["schemas"]["ProductSummary"][];
+            /** Format: int32 */
+            page: number;
+            /** Format: int32 */
+            pageSize: number;
+            /** Format: int32 */
+            totalItems: number;
+            /** Format: int32 */
+            totalPages: number;
+        };
+        PriceRange: {
+            /** Format: int64 */
+            min: number;
+            /** Format: int64 */
+            max: number;
+        };
+        ProblemDetails: {
+            type?: null | string;
+            title?: null | string;
+            /** Format: int32 */
+            status?: null | number;
+            detail?: null | string;
+            instance?: null | string;
+        };
+        ProductDetail: {
+            /** Format: int32 */
+            id: number;
+            slug: string;
+            name: string;
+            brand: components["schemas"]["BrandRef"];
+            concentration: components["schemas"]["ConcentrationRef"];
+            shortDescription: null | string;
+            description: null | string;
+            categories: components["schemas"]["CategoryRef"][];
+            images: components["schemas"]["ProductImageDto"][];
+            notes: components["schemas"]["ProductNotes"];
+            variants: components["schemas"]["VariantDto"][];
+            seo: components["schemas"]["SeoDto"];
+            /** Format: date-time */
+            publishedAtUtc: null | string;
+            currency?: null | string;
+        };
+        ProductImageDto: {
+            url: string;
+            altText: null | string;
+            isPrimary: boolean;
+            /** Format: int32 */
+            width: null | number;
+            /** Format: int32 */
+            height: null | number;
+        };
+        ProductNotes: {
+            top: components["schemas"]["NoteRef"][];
+            heart: components["schemas"]["NoteRef"][];
+            base: components["schemas"]["NoteRef"][];
+        };
+        ProductSummary: {
+            /** Format: int32 */
+            id: number;
+            slug: string;
+            name: string;
+            brand: components["schemas"]["BrandRef"];
+            concentration: components["schemas"]["ConcentrationRef"];
+            primaryImage: null | components["schemas"]["ImageDto"];
+            /** Format: int64 */
+            fromPrice: number;
+            /** Format: int64 */
+            fromOriginalPrice: null | number;
+            volumesMl: number[];
+            inStock: boolean;
+            isNew: boolean;
+            currency?: null | string;
+        };
+        SeoDto: {
+            metaTitle: string;
+            metaDescription: null | string;
+        };
+        VariantDto: {
+            sku: string;
+            /** Format: double */
+            volumeMl: number;
+            /** Format: int64 */
+            price: number;
+            /** Format: int64 */
+            originalPrice: null | number;
+            /** Format: int32 */
+            discountPercent: null | number;
+            availability: components["schemas"]["AvailabilityStatus"];
         };
     };
     responses: never;
@@ -52,6 +373,351 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    GetCatalogFilters: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogFilters"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    GetHome: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HomeResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    ListBrands: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandSummary"][];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    GetBrand: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandDetail"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    ListCategories: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategorySummary"][];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    GetCategory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryDetail"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    SearchProducts: {
+        parameters: {
+            query?: {
+                q?: string;
+                brand?: string[];
+                category?: string[];
+                concentration?: string[];
+                volume?: number[];
+                minPrice?: number;
+                maxPrice?: number;
+                sort?: "newest" | "price_asc" | "price_desc" | "name_asc" | "name_desc";
+                page?: number;
+                pageSize?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagedResultOfProductSummary"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    GetProduct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductDetail"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    GetRelatedProducts: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductSummary"][];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
         };

@@ -110,6 +110,8 @@ P3-04 shares `api/queries/products.ts` with P3-03, so it is no longer in PG-G an
 
 P4-01 can run in parallel with Phase 2 or 3, because it touches only `Api/Endpoints/Admin/*` and the auth setup.
 
+**Before P4-01 lands:** scope `ContractGuardTests` (P2-08) to public paths only (`/api/v1/` excluding `/api/v1/admin`). Admin schemas will legitimately contain `stockQuantity`, so the guard as written would fail.
+
 ## Phase 5 – Deployment (requires explicit user approval)
 
 - **Azure resources:**
@@ -121,6 +123,8 @@ P4-01 can run in parallel with Phase 2 or 3, because it touches only `Api/Endpoi
     - role assignment *Storage Blob Data Contributor* for the App Service identity
   - Key Vault (optional)
 - **App settings:** `Storage:Images:*`, `Catalog:LowStockThreshold`, `Store:PublicBaseUrl`. Data Protection keys are persisted to Blob.
+  - Also set `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true`, with access restrictions so the app is reachable only through the App Service front end (otherwise `X-Forwarded-For` can be spoofed and the rate limit bypassed).
+  - Optional: `RateLimiting__PublicPerMinute` (default 120), `RateLimiting__AuthPerMinute` (default 5), `Sitemap__MaxUrls` (default and maximum 50000).
 - **Pipeline:** `deploy.yml` with OIDC, GitHub Environments and required reviewers, plus an approved migration step.
 - **First admin:** `bootstrap-admin` against production only with user approval.
 - **No production deployment, production migration, or production authentication configuration without explicit user approval.**

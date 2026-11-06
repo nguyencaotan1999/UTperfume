@@ -112,6 +112,19 @@ To run the app in Development with the sample catalogue, set `ConnectionStrings:
 
 Never commit a real server name, connection string or credential. Start Azurite (section 2) first if you want the placeholder images uploaded; otherwise only the blob paths are seeded.
 
+## 7. Deployment settings (App Service configuration)
+
+These are settings the app needs outside Development. Set them as App Service application settings (never in a committed file).
+
+| Setting | Value | Notes |
+|---|---|---|
+| `Store__PublicBaseUrl` | The public origin, for example `https://shop.example.com` | **Required outside Development.** The app refuses to start, with a clear message, when it is missing or is not an absolute http or https URL. Only the scheme and host (and port) are used: any path is ignored, so the app cannot be served under a sub-path (ADR-0012, one same-origin App Service). The sitemap builds its absolute URLs from it. In Development it falls back to the request host. |
+| `ASPNETCORE_FORWARDEDHEADERS_ENABLED` | `true` | Needed so the rate limiter sees the real client IP instead of the App Service front end. Without it every client shares one limit. **When this is set, the app must be reachable only through the App Service front end** (add access restrictions if a private endpoint or any other path to the app exists). Otherwise a client can spoof `X-Forwarded-For` and bypass the rate limit. |
+| `RateLimiting__PublicPerMinute` | optional, default `120` | Public requests per client IP per minute (429 with `Retry-After` when exceeded). |
+| `Sitemap__MaxUrls` | optional, default and maximum `50000` | Cap on sitemap URLs (protocol limit). |
+
+Public responses are cached for 60 seconds on the server (output cache, keyed by path and full query string) and carry `Cache-Control: public, max-age=60`. Errors and anything under `/api/v1/admin` are `no-store`.
+
 ## Secrets
 
 - Local secrets go in `dotnet user-secrets` (API project) or environment variables. Nothing secret is committed.

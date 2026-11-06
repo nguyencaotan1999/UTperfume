@@ -1,4 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <InternalsVisibleTo Include="UTperfume.IntegrationTests" />
+  </ItemGroup>
   <PropertyGroup>
     <!-- ADR-0009: emit the committed contract at build time. Document generation starts the app in a special mode, so Program.cs must not connect to SQL or Storage while registering services. -->
     <OpenApiGenerateDocuments>true</OpenApiGenerateDocuments>
@@ -16,7 +19,6 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" />
     <PackageReference Include="Microsoft.Extensions.ApiDescription.Server">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

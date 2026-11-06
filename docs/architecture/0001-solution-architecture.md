@@ -117,7 +117,7 @@ UTperfume.Api/
 | `Azure.Storage.Blobs` | Infrastructure | Image storage (ADR-0014, user-approved) |
 | `Azure.Identity` | Infrastructure | `DefaultAzureCredential` for Managed Identity to Blob Storage and Azure SQL |
 | `Azure.Extensions.AspNetCore.DataProtection.Blobs` | Api (Phase 5, *Proposed*) | Persist Data Protection keys across instances and restarts (§7.3) |
-| `Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore` | Api | `/health/ready` database probe |
+| *(none)* | Api | `/health/ready` uses the custom `DatabaseHealthCheck` (`Database.CanConnectAsync`). It returns 503 when the connection string is missing or the database is unreachable, and it needs no extra package. |
 | `xunit.v3`, `xunit.runner.visualstudio`, `Microsoft.NET.Test.Sdk` | tests | Approved stack |
 | `FluentAssertions` **7.x**, pinned `[7.0.0,8.0.0)` | tests | Approved stack; Apache-2.0 (ADR-0013) |
 | `Microsoft.AspNetCore.Mvc.Testing` | IntegrationTests | WebApplicationFactory |
@@ -507,11 +507,11 @@ These steps are recorded in `docs/dev-setup.md` (P0-05).
 |---|---|
 | `ConnectionStrings:Catalog` | |
 | `Store:Currency` | Fixed `VND` |
-| `Store:PublicBaseUrl` | |
+| `Store:PublicBaseUrl` | The public origin, for example `https://shop.example.com`, with no path. Only the scheme and host are used (sitemap URLs), so the app cannot be served under a sub-path (ADR-0012: one same-origin App Service). Required and validated at startup outside Development. |
 | `Catalog:NewBadgeDays` | Default 30 |
 | `Catalog:LowStockThreshold` | Default 5, integer >= 1, validated at startup with `ValidateOnStart` |
-| `RateLimiting:PublicPerMinute` | |
-| `RateLimiting:AuthPerMinute` | |
+| `RateLimiting:PublicPerMinute` | Default 120 per client IP per minute; 429 ProblemDetails with `Retry-After` |
+| `RateLimiting:AuthPerMinute` | Default 5 (used from Phase 4) |
 | `Storage:Images:ServiceUri` | |
 | `Storage:Images:Container` | `catalog-images` |
 | `Storage:Images:PublicBaseUrl` | |

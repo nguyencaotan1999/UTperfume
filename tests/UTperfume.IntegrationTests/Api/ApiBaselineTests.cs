@@ -145,6 +145,27 @@ public sealed class ApiBaselineTests(TestDatabase database) : IDisposable
         body.Should().NotContain(ThrowingStartupFilter.Secret).And.NotContain("StackTrace").And.NotContain(" at ");
     }
 
+
+    // A BadHttpRequestException keeps its own status (a future upload limit gives 413 or 415), never a 500.
+    [Theory]
+    [InlineData(400, "Bad Request")]
+    [InlineData(413, "Payload Too Large")]
+    [InlineData(415, "Unsupported Media Type")]
+    public async Task BadHttpRequestException_maps_to_its_own_status_with_problem_details_not_500(int status, string title)
+    {
+        using var factory = _factory.WithWebHostBuilder(builder =>
+            builder.ConfigureServices(services => services.AddTransient<IStartupFilter, ThrowingStartupFilter>()));
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync($"/api/v1/__status/{status}", TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be((HttpStatusCode)status);
+        var problem = await ReadProblemAsync(response);
+        problem.GetProperty("status").GetInt32().Should().Be(status);
+        problem.GetProperty("title").GetString().Should().Be(title);
+        problem.TryGetProperty("detail", out _).Should().BeFalse("details are only shown in Development");
+        (await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).Should().NotContain("client error detail");
+    }
     [Fact]
     public async Task Security_headers_are_present_and_csp_allows_the_configured_image_host()
     {
@@ -220,6 +241,10 @@ public sealed class ApiBaselineTests(TestDatabase database) : IDisposable
             app.UseWhen(
                 context => context.Request.Path == "/api/v1/__throw",
                 branch => branch.Run(_ => throw new InvalidOperationException(Secret)));
+            app.UseWhen(
+                context => context.Request.Path.StartsWithSegments("/api/v1/__status"),
+                branch => branch.Run(context => throw new Microsoft.AspNetCore.Http.BadHttpRequestException(
+                    "client error detail", int.Parse(context.Request.Path.Value!.Split('/')[^1], System.Globalization.CultureInfo.InvariantCulture))));
             next(app);
         };
     }
