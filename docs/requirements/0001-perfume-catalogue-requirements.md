@@ -1,9 +1,9 @@
 # 0001 – Perfume Catalogue Requirements (Public Storefront + Admin Boundary)
 
-- Status: **Accepted** (user approval 2026-11-05). Q-07 to Q-11 remain open with defaults (§8).
-- Date: 2026-11-05 (revised after the user's decisions)
+- Status: **Accepted** (user approval 2026-11-05). Q-12, Q-13 and Q-14 decided 2026-11-06. Q-07 to Q-11 remain open with defaults (§8).
+- Date: 2026-11-05 (revised after the user's decisions; revised 2026-11-06 for the Phase 4 decisions)
 - Author: Architect
-- Related: `docs/architecture/0001-solution-architecture.md`, `docs/architecture/0002-database-model.md`, `docs/decisions/0001`–`0014`, `docs/tasks/0001-phase-plan.md`
+- Related: `docs/architecture/0001-solution-architecture.md`, `docs/architecture/0002-database-model.md`, `docs/decisions/0001`–`0014`, `docs/tasks/0001-phase-plan.md`, `docs/requirements/0002-admin-requirements.md` (draft)
 
 ## 1. Requirement Summary
 
@@ -208,6 +208,7 @@ Cart, customer accounts, checkout, orders, payment, shipping, promotions, wishli
   - Only admins can upload, and uploads go through the API.
   - Accepted formats are JPEG, PNG and WebP, verified by file signature as well as by declared content type. The maximum size is 5 MB.
   - Files are stored in Azure Blob Storage under a server-generated name. The original file name is never used as the path.
+  - **Public read (Q-13, decided 2026-11-06):** blobs in the `catalog-images` container are anonymously readable by URL (blob-level access, listing disabled). Only catalogue images are public. Catalogue images are product images, brand logos, category images and banner images (D-A4 in `0002`, decided 2026-11-06). No other blob is public: the `dataprotection-keys` container and any future container stay private, and nothing other than catalogue display images may be written to `catalog-images`.
 
 ## 6. Acceptance Criteria (testable)
 
@@ -285,7 +286,7 @@ Cart, customer accounts, checkout, orders, payment, shipping, promotions, wishli
 - **AC-A7:** Given an unknown email, a wrong password, or a locked account, then sign-in returns the same 401 ProblemDetails.
 - **AC-A8:** The session cookie is set with `HttpOnly`, `Secure` and `SameSite=Strict`. Sign-out invalidates it, and the security stamp is refreshed after a password change.
 - **AC-A9:** A password reset request always returns 202, whether or not the email exists. A reset token is single-use and expires after 1 hour.
-- **AC-A10:** An image upload by an admin that is over 5 MB, is not JPEG/PNG/WebP by signature, or claims a different content type than its bytes is rejected with 400 or 413 ProblemDetails and nothing is stored.
+- **AC-A10:** An image upload by an admin that is over 5 MB is rejected with 413 ProblemDetails. An upload that is not JPEG/PNG/WebP by signature, or that claims a different content type than its bytes, is rejected with 415 ProblemDetails with `code=unsupported_image_type`. An empty or missing file is rejected with 400. In every case nothing is stored. (Aligned with `0002` BR-A-23, BR-A-24, AC-A-31 and AC-A-32.)
 
 ### Cross-cutting
 
@@ -301,7 +302,7 @@ Cart, customer accounts, checkout, orders, payment, shipping, promotions, wishli
 - A-04: Gender is modelled as a category (e.g. Men/Women/Unisex), not as a separate attribute.
 - A-05: "Best sellers" and "featured" are manual admin flags until orders exist.
 - A-06: The catalogue is fewer than 10,000 products and 50,000 variants, so computing the from-price at query time is acceptable.
-- A-07: Images are stored in Azure Blob Storage (**confirmed**). The database stores the blob path and metadata, and the public URL is built from configuration (ADR-0014).
+- A-07: Images are stored in Azure Blob Storage (**confirmed**). The database stores the blob path and metadata, and the public URL is built from configuration (ADR-0014). Anonymous read on the `catalog-images` container is **confirmed** (Q-13).
 - A-08: Product descriptions are plain text with line breaks, not HTML. This avoids stored-XSS risk.
 - A-09: Exact stock quantity is **not** shown publicly (**confirmed**). Only `InStock`, `LowStock` or `OutOfStock` is shown.
 - A-10: The SPA is client-side rendered. SEO relies on crawlers that execute JavaScript plus the sitemap (see risk R-01).
@@ -321,6 +322,15 @@ Cart, customer accounts, checkout, orders, payment, shipping, promotions, wishli
 | — | Git repository and GitHub remote | Approved |
 | — | TanStack Query | Approved |
 
+### 8.1a Resolved by the user (2026-11-06)
+
+| ID | Question | Decision |
+|---|---|---|
+| Q-13 | Anonymous read on the image container | **Approved.** Anonymous blob-level read on `catalog-images` only (listing disabled); no other blob or container is public (BR-30, ADR-0014). The public-read scope is: **product images, brand logos, category images and banner images**, all stored in that one container (D-A4 in `0002`, decided 2026-11-06). |
+| D-12 | Who provisions the non-production Azure storage account | **The user provisions it.** The Developer must not create Azure resources (`docs/tasks/0001-phase-plan.md`). |
+| Q-12 | Email provider and sender identity for admin password reset | **Decided.** Provider: Gmail, using the provider account the user named. Sender address: the sender address the user named (not recorded in the project documents). Operational requirements: the Gmail app password (or equivalent credential) is a secret, stored only in the deployment secret store, never in the repository, configuration files or documents; the provider account address is not recorded in the project documents. Risk: Gmail sending limits apply, and a personal Gmail account is a non-enterprise production dependency; accepted by the user, to be reviewed before go-live (`0002` R-A-06). **Open point for the implementer:** Gmail normally sends only as the authenticated account or a verified "Send mail as" alias; whether the sender address is usable with the provider account must be verified before production use (ADR-0010 §8). |
+| Q-14 | Require two-factor sign-in (TOTP) for admins? | **Not required before go-live.** Supported by Identity but not enforced. Security risk accepted by the user (`0002` R-A-07). |
+
 ### 8.2 Still open
 
 | ID | Question | Blocking? | Default if not answered |
@@ -330,6 +340,3 @@ Cart, customer accounts, checkout, orders, payment, shipping, promotions, wishli
 | Q-09 | Accent-insensitive search (e.g. "hermes" matches "Hermès", "nuoc hoa" matches "nước hoa")? This matters more now that the store is Vietnamese. | No | Case-insensitive only (database default `_CI_AS`) |
 | Q-10 | Show active brands or categories that have no visible products? | No | Lists include them; home sections exclude them |
 | Q-11 | Should a product with all variants out of stock be listed, and can it be sorted last? | No | Listed, normal sort, badge "Out of stock" |
-| Q-12 | Email provider for admin password reset: Azure Communication Services Email or the company SMTP server (new dependency, ADR-0010) | Blocks P4-05 only | None; reset email only logged in Development |
-| Q-13 | Can the storage account allow anonymous read on the image container, or does organisation policy forbid it (needs a CDN or proxy instead)? (ADR-0014) | Blocks P5 deployment only | Anonymous blob-level read on the `catalog-images` container |
-| Q-14 | Require two-factor sign-in (TOTP) for admins? | No | Supported by Identity but not enforced; recommended before go-live |

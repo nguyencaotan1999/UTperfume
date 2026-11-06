@@ -1,7 +1,7 @@
 # ADR-0010: Admin authentication with ASP.NET Core Identity and a same-origin cookie
 
-- Status: **Accepted** (user decision 2026-11-05: ASP.NET Core Identity; Entra ID is not the plan). The email provider (Q-12) and enforcing two-factor sign-in (Q-14) remain **Proposed**.
-- Date: 2026-11-05
+- Status: **Accepted** (user decision 2026-11-05: ASP.NET Core Identity; Entra ID is not the plan). The email provider and sender (Q-12) and two-factor sign-in (Q-14: not required before go-live) were decided by the user on 2026-11-06, as was the single admin role (D-A1).
+- Date: 2026-11-05 (amended 2026-11-06)
 - Related: ADR-0007; architecture §6.5, §7, §9; requirements BR-29, AC-A1 to AC-A9
 
 ## Context
@@ -35,15 +35,26 @@ Only staff use the admin side, and the public side is anonymous. The SPA and API
    - Later admins are created and deactivated by admins (`AdminUser.IsActive`).
 7. **Authorization:**
    - The `AdminOnly` policy requires the role `Catalog.Admin`.
+   - **One Admin role for all admin functions** (D-A1, user decision 2026-11-06), including admin user management. No further roles or policies.
    - The fallback policy requires an authenticated user.
    - Unchanged from ADR-0007.
-8. **Password reset is in scope for Phase 4 (P4-05):**
+8. **Password reset is in scope for Phase 4 (P4-05 delivers the endpoints and the email abstraction; P4-05a delivers the production sender):**
    - A request always returns 202. The token is valid for 1 hour and is single-use, because the security stamp changes on reset.
    - Signed-in admins can change their own password.
    - **Email sender:** `IEmailSender<AdminUser>`. The Development implementation logs the link and sends nothing.
-   - The production provider (Azure Communication Services Email or company SMTP) is **open (Q-12)** and will be a new dependency that needs approval. Until it is chosen, production reset is admin-assisted.
+     - **DECISION NEEDED (Engineering Manager to user), OP-1:** this conflicts with `0002` BR-A-31, which says logs never contain reset tokens, while the Development sender writes the reset link (with the token) to the log. The conflict is open. Options: (A) a Development-only exception to BR-A-31, recorded explicitly; or (B) tokens are never logged, and E2E uses a test-only capturing sender. Not decided.
+   - **Production provider and sender (Q-12, user decision 2026-11-06):**
+     - Provider: **Gmail**, authenticated as the provider account the user named. That account address is not recorded in the project documents.
+     - Sender address: the sender address the user named. It is not recorded in the project documents.
+     - Both values are deployment configuration (`Email:*`), set outside the repository like the other production values.
+   - **Credential handling:** the Gmail app password (or equivalent credential) is a **secret**. It is stored only in the deployment secret store (App Service settings or Key Vault) and in user-secrets for any local test send. It is never written to the repository, configuration files or documents, and never logged.
+   - **Implementation library:** SMTP submission to Gmail. If the implementation needs a package beyond the .NET base library, that package is a new dependency that needs justification and approval (P4-05a).
+   - **Verification before production use:** Gmail normally sends only as the authenticated account or a verified "Send mail as" alias, and an app password requires 2-Step Verification on the account. The implementer and the user must confirm that the sender address is accepted for the provider account; otherwise Gmail may reject or rewrite the sender.
+   - **Risk (accepted by the user, to be reviewed before go-live):** Gmail sending limits apply, and a personal Gmail account is a non-enterprise production dependency (`0002` R-A-06).
+   - Until the provider is wired (P4-05a) and its credential is configured, and as a fallback afterwards, production reset is admin-assisted.
+     - **DECISION NEEDED (Engineering Manager to user), OP-2:** the behaviour of a reset request outside Development before P4-05a exists is open. Options: (A) return 202 as always, send nothing, and log only that no email was sent (no token, no address); or (B) return an error until P4-05a is delivered. Not decided.
 9. **Data Protection keys** (cookies, antiforgery and reset tokens) are persisted to a private Blob container before deployment (Phase 5). Without that, every restart signs all admins out and invalidates reset links.
-10. **Two-factor sign-in (TOTP)** is supported by the default token providers but not enforced (Q-14). It is recommended before go-live.
+10. **Two-factor sign-in (TOTP)** is supported by the default token providers but not enforced. **Q-14, user decision 2026-11-06: not required before go-live.** The security risk (a single stolen password gives full admin access) is accepted and recorded in `0002` R-A-07. It can be enabled later without a schema change.
 
 Rejected alternatives:
 
@@ -53,7 +64,8 @@ Rejected alternatives:
 ## Consequences
 
 - We own credential security: hashing, lockout, reset, and monitoring of failed sign-ins.
-- New package: `Microsoft.AspNetCore.Identity.EntityFrameworkCore`. A further package for email depends on Q-12.
+- New package: `Microsoft.AspNetCore.Identity.EntityFrameworkCore`. A further package for Gmail SMTP sending (Q-12) is needed only if the base library is not used; it requires approval.
+- Production password-reset email depends on a personal Gmail account and its sending limits; review before go-live.
 - New migration `AddAdminIdentity` in Phase 4.
 - **Customer accounts (future)** must use a separate cookie and must never be given `Catalog.Admin`. They need their own ADR.
 - Configuring production authentication (bootstrap, keys, email) requires explicit user approval.

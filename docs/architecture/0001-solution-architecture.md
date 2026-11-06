@@ -1,7 +1,7 @@
 # 0001 – Solution Architecture
 
-- Status: **Accepted** (user approval 2026-11-05). Sub-items still open are marked *Proposed* inline (Q-07 to Q-14).
-- Date: 2026-11-05 (revised after the user's decisions)
+- Status: **Accepted** (user approval 2026-11-05). Sub-items still open are marked *Proposed* inline (Q-07 to Q-11). Q-12, Q-13, Q-14, D-12 and the admin decisions D-A1 to D-A4 (`docs/requirements/0002-admin-requirements.md` §9) decided 2026-11-06.
+- Date: 2026-11-05 (revised after the user's decisions; revised 2026-11-06)
 - Requirements: `docs/requirements/0001-perfume-catalogue-requirements.md`
 - Database detail: `docs/architecture/0002-database-model.md`. It is a separate file because the model is large and changes through migrations; §8 summarises it.
 - Decisions: `docs/decisions/0001`–`0014`
@@ -124,7 +124,7 @@ UTperfume.Api/
 
 - Cookie authentication, antiforgery, output caching, rate limiting and ProblemDetails are part of the ASP.NET Core framework and need no packages.
 - **Not used:** Testcontainers (Docker is unavailable), JwtBearer, MSAL, Respawn.
-- An email provider package (Azure Communication Services Email or SMTP) is pending Q-12.
+- Email provider (Q-12, decided 2026-11-06): Gmail over SMTP. An SMTP package is added only if the .NET base library is not used, and then needs justification and approval (P4-05a, the production sender task).
 
 ## 5. Frontend Structure
 
@@ -220,7 +220,7 @@ All non-2xx responses from `/api/*` are RFC 9457 `application/problem+json` with
 | 404 | Unknown, invisible or inactive resource; unknown `/api` route | ProblemDetails (no reason disclosed) |
 | 409 | Admin: duplicate slug or SKU, or concurrency mismatch | ProblemDetails with `code` (`duplicate_slug`, `duplicate_sku`, `concurrency_conflict`) |
 | 413 | Admin image upload over 5 MB | ProblemDetails |
-| 415 | Admin image upload that is not JPEG, PNG or WebP | ProblemDetails with `code=unsupported_image_type` |
+| 415 | Admin image upload that is not JPEG, PNG or WebP by signature, or whose signature does not match the declared content type | ProblemDetails with `code=unsupported_image_type` |
 | 422 | Admin business-rule violation | ProblemDetails with `code` |
 | 429 | Rate limited | ProblemDetails, `Retry-After` header |
 | 500 | Unhandled | Generic ProblemDetails |
@@ -299,12 +299,14 @@ Notes on these endpoints:
   - `FallbackPolicy` requires an authenticated user.
   - Public groups are `.AllowAnonymous()`.
   - `AdminOnly` requires the role `Catalog.Admin` (an Identity role).
-- **Phase 4 resources** (contracts in requirements `0002`):
+- **Phase 4 resources** (contracts in requirements `docs/requirements/0002-admin-requirements.md`, approved by the user 2026-11-06):
   - `GET /admin/me`
-  - CRUD for `brands`, `categories`, `products` (plus `publish` and `archive`), `products/{id}/variants` (including **`stockQuantity`**, admin-only), `products/{id}/images` (upload, §7.4), `products/{id}/notes`, `fragrance-notes`, `banners`, `concentrations`
-  - Admin user management: create, deactivate and reset lock for other admins
+  - CRUD for `brands`, `categories`, `products` (plus `publish` and `archive`), `products/{id}/variants` (including **`stockQuantity`**, admin-only; no delete), `products/{id}/images` (upload, §7.4), `products/{id}/notes`, `fragrance-notes`, `banners`
+  - `concentrations`: **read-only** list (`0002` BR-A-19); no create, update or delete
+  - Admin user management: create, list, deactivate, reactivate, unlock and set a temporary password for other admins
+  - One role, `Catalog.Admin`, for all admin functions (D-A1)
 - Admin uses numeric IDs. Updates carry `rowVersion` and return 409 on mismatch.
-- **Audit:** admin writes set `UpdatedAtUtc` and `UpdatedBy` (the Identity user ID) and are logged as structured events.
+- **Audit:** admin writes set `UpdatedAtUtc` and `UpdatedBy` (the Identity user ID) and are logged as structured events. No persistent audit table (D-A3).
 
 ### 6.6 Validation rules
 
@@ -322,7 +324,7 @@ Notes on these endpoints:
 | Admin: slug | regex, <= 200 characters, unique per entity → 409 |
 | Admin: SKU | `^[A-Z0-9][A-Z0-9-_.]{0,63}$` after upper-casing, unique → 409 |
 | Admin: variant | VolumeMl > 0 and <= 5000 (1 decimal place); Price integer >= 0; OriginalPrice null or > Price; StockQuantity integer >= 0; unique volume per product |
-| Admin: image upload | multipart `file` <= 5 MB; signature JPEG, PNG or WebP that matches the declared type; `altText` <= 250; server-generated blob name |
+| Admin: image upload | multipart `file` <= 5 MB; signature JPEG, PNG or WebP that matches the declared type; `altText` <= 250; server-generated blob name; at most 6 images per product (D-A2), otherwise 422 `image_limit_reached` |
 | Admin: banner `LinkUrl` | starts with `/` and not `//` |
 | Admin: description | plain text, <= 10,000 characters |
 | Admin: publish | active brand, >= 1 active variant and >= 1 image, otherwise 422 |
@@ -358,7 +360,7 @@ The database also enforces the critical rules (see `0002`).
 - **Account policy:**
   - No self-registration. `RequireConfirmedAccount = false`; admins are created by admins.
   - **Bootstrap:** the Api runs a one-off command, `dotnet UTperfume.Api.dll bootstrap-admin`. It creates the first `Catalog.Admin` user from `Bootstrap:AdminEmail` and `Bootstrap:AdminPassword` (user-secrets, or a temporary App Service setting), and only if no admin exists. Running it against production needs user approval.
-- **Two-factor:** TOTP is supported by Identity token providers but not enforced (Q-14, *Proposed*).
+- **Two-factor:** TOTP is supported by Identity token providers but not enforced. Q-14, decided 2026-11-06: not required before go-live (risk accepted, `0002` R-A-07).
 
 ### 7.2 CSRF protection
 
@@ -381,7 +383,10 @@ The database also enforces the critical rules (see `0002`).
 - **Email sender:**
   - The interface is `IEmailSender<AdminUser>`, from Identity.
   - Development uses `LoggingEmailSender`, which writes the reset link to the log and never sends.
-  - The production provider is **open (Q-12)**. Until it is chosen, production reset is admin-assisted: another admin sets a temporary password. The flow, endpoints and tests ship in Phase 4 regardless.
+    - **DECISION NEEDED (Engineering Manager to user), OP-1:** this conflicts with `0002` BR-A-31, which says logs never contain reset tokens, while `LoggingEmailSender` writes the reset link (with the token) to the log. The conflict is open. Options: (A) a Development-only exception to BR-A-31, recorded explicitly; or (B) tokens are never logged, and E2E uses a test-only capturing sender. Not decided.
+  - The production provider is **Gmail** over SMTP, and the sender address is decided (Q-12, 2026-11-06; see `0001` Q-12 and ADR-0010 §8; the address itself is the sender address the user named and is not recorded in the project documents). The production sender is task P4-05a. The Gmail app password (or equivalent credential) is a secret held only in the deployment secret store, never in the repository, configuration files or documents. Whether Gmail accepts the decided sender address for the provider account must be verified before production use.
+  - Until the production sender is wired and its credential configured (and as a fallback afterwards), production reset is admin-assisted: another admin sets a temporary password. The flow, endpoints and tests ship in Phase 4 regardless (P4-05).
+    - **DECISION NEEDED (Engineering Manager to user), OP-2:** the behaviour of a reset request outside Development before P4-05a exists is open. Options: (A) return 202 as always, send nothing, and log only that no email was sent (no token, no address); or (B) return an error until P4-05a is delivered. Not decided.
 - **Data Protection keys** (used for cookies, antiforgery and reset tokens) must persist across App Service restarts and scale-out. Store them in Blob Storage (`PersistKeysToAzureBlobStorage`, from `Azure.Extensions.AspNetCore.DataProtection.Blobs`), protected with Key Vault if one is provisioned. This is decided before P5 deployment.
 
 ### 7.4 Image upload: through the API (ADR-0014)
@@ -400,7 +405,8 @@ The database also enforces the critical rules (see `0002`).
 - **Delete:** delete the row, then delete the blob. A failed blob delete is logged, and orphan cleanup is deferred.
 - Brand logos, category images and banner images use the same service, under the prefixes `brands/`, `categories/` and `banners/`.
 - **Credentials:** the App Service uses its Managed Identity with the *Storage Blob Data Contributor* role on the container. There are no account keys or SAS in configuration.
-- **Public read:** the `catalog-images` container allows anonymous blob-level read (Q-13). The public URL is `Storage:Images:PublicBaseUrl` + `/` + `BlobPath`, so a CDN can be added later by changing configuration only.
+- **Public read (Q-13, approved 2026-11-06):** the `catalog-images` container allows anonymous blob-level read, with listing disabled. Only catalogue images are public: product images, brand logos, category images and banner images (D-A4); `dataprotection-keys` and any other container are private (ADR-0014 §5). The public URL is `Storage:Images:PublicBaseUrl` + `/` + `BlobPath`, so a CDN can be added later by changing configuration only.
+- **Non-production storage account (D-12):** provisioned by the user. The Developer does not create Azure resources and uses Azurite until the user supplies the non-secret settings.
 
 ## 8. Database Model Summary
 
@@ -517,7 +523,7 @@ These steps are recorded in `docs/dev-setup.md` (P0-05).
 | `Storage:Images:PublicBaseUrl` | |
 | `Storage:Images:ConnectionString` | Local Azurite only; `UseDevelopmentStorage=true` |
 | `Identity:*` | Cookie lifetimes |
-| `Email:*` | Pending Q-12 |
+| `Email:*` | Gmail SMTP (Q-12): sender address and account name are deployment configuration; the app password is a **secret**, set only in the deployment secret store or user-secrets, never committed |
 | `Bootstrap:AdminEmail`, `Bootstrap:AdminPassword` | Secret; never committed |
 
 - **Migrations:** never run at startup outside Development. A CI job applies them in non-production. Production migrations need explicit user approval.
@@ -533,7 +539,7 @@ These steps are recorded in `docs/dev-setup.md` (P0-05).
 - **Azure resources (Phase 5, approval required):**
   - App Service with a system-assigned Managed Identity
   - Azure SQL
-  - **Storage account** (StorageV2, LRS, HTTPS only, TLS 1.2 or later), with container `catalog-images` and container `dataprotection-keys` (private)
+  - **Storage account** (StorageV2, LRS, HTTPS only, TLS 1.2 or later), with container `catalog-images` (anonymous blob-level read, Q-13) and container `dataprotection-keys` (private). The non-production account is provisioned by the user (D-12).
   - Key Vault (optional)
 - **Observability:** App Service logs. Application Insights is optional and should be decided before the first deployment.
 
