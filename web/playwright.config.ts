@@ -6,10 +6,12 @@ const baseURL = `http://localhost:${port}`
 /**
  * The API serves the built SPA from wwwroot (ADR-0012), so the smoke test runs against the real API.
  * `npm run build` output is copied to src/UTperfume.Api/wwwroot by the webServer command.
- * Database: the API itself needs none for /health/live. The connection string, when needed, comes from
- * the environment (ConnectionStrings__Catalog), never from a file.
+ * Database: the data-driven tests need one. ConnectionStrings__Catalog must be set in the environment (a throwaway
+ * database; the Development API migrates and seeds it). global-setup.ts fails the run when it is missing. It comes from
+ * the environment only, never from a file.
  */
 export default defineConfig({
+  globalSetup: './e2e/global-setup.ts',
   testDir: './e2e',
   fullyParallel: false,
   forbidOnly: !!process.env.CI,

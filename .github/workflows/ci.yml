@@ -112,6 +112,8 @@ jobs:
           --health-start-period 20s
     env:
       TestDatabase__ConnectionString: Server=localhost,1433;User Id=sa;Password=${{ secrets.CI_SQL_SA_PASSWORD }};TrustServerCertificate=true;Encrypt=false;Connect Timeout=60
+      # The API (Development) migrates and seeds this throwaway database; the E2E tests need the seeded data.
+      ConnectionStrings__Catalog: Server=localhost,1433;Database=UTperfume_E2E;User Id=sa;Password=${{ secrets.CI_SQL_SA_PASSWORD }};TrustServerCertificate=true;Encrypt=false;Connect Timeout=60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4

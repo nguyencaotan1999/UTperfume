@@ -77,6 +77,17 @@ On a corporate network with TLS inspection the download can fail with `UNABLE_TO
 
 `web/playwright.config.ts` sets `reuseExistingServer` for local runs. If an API is already listening on port 5080 (for example from `dotnet run`), Playwright reuses it, even when it does not serve the built SPA, and the smoke test fails. Stop any local API on port 5080 before running `npx playwright test`.
 
+### Running the E2E tests
+
+The E2E tests check real data, so they need a database. Set `ConnectionStrings__Catalog` in the environment of the session that runs Playwright, pointing at a **throwaway** database name of your own (the Development API creates it, applies the migrations and seeds the sample catalogue on first start). `playwright.config.ts` passes the variable through to the API, and `e2e/global-setup.ts` fails the run, with a clear message, when it is missing or when the seed does not appear within 120 seconds (`E2E_SEED_WAIT_SECONDS` changes that wait). Use placeholders like these and never save a real value in a file:
+
+```powershell
+$env:ConnectionStrings__Catalog = "Server=<server>\<instance>;Database=<throwaway-e2e-database>;Integrated Security=true;TrustServerCertificate=true"
+npx playwright test
+```
+
+Each page test waits for its API call, asserts HTTP 200, shows seeded cards, and fails if an error message is visible, so a broken API makes the run fail. Drop the throwaway database when you no longer need it. In CI the E2E job passes `ConnectionStrings__Catalog` for the SQL Server service container (database `UTperfume_E2E`, password from the `CI_SQL_SA_PASSWORD` secret).
+
 ## 5. Run the checks
 
 ```powershell
