@@ -55,6 +55,10 @@ app.UseSecurityHeaders(contentSecurityPolicy);
 app.UseStatusCodePages();
 app.UseDefaultFiles();
 app.UseStaticFiles();
+// Static files run BEFORE routing. WebApplication adds UseRouting first unless it is called explicitly, and the
+// StaticFileMiddleware skips any request that already has an endpoint selected: the SPA fallback endpoint then
+// matched /robots.txt and /assets/*.js and answered with index.html.
+app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 

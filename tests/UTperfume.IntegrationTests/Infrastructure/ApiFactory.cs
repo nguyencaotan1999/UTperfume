@@ -19,15 +19,18 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     private readonly IReadOnlyDictionary<string, string?> _overrides;
     private readonly string _environment;
     private readonly string _webRoot;
+    private readonly bool _useProjectWebRoot;
 
     public ApiFactory(
         TestDatabase database,
         IReadOnlyDictionary<string, string?>? overrides = null,
-        string environment = "Testing")
+        string environment = "Testing",
+        bool useProjectWebRoot = false)
     {
         _database = database;
         _overrides = overrides ?? new Dictionary<string, string?>();
         _environment = environment;
+        _useProjectWebRoot = useProjectWebRoot;
         _webRoot = Path.Combine(Path.GetTempPath(), "utperfume-webroot-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_webRoot);
         File.WriteAllText(Path.Combine(_webRoot, "index.html"), "<!doctype html><html><body>spa-index</body></html>");
@@ -38,7 +41,10 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment(_environment);
-        builder.UseWebRoot(_webRoot);
+        if (!_useProjectWebRoot)
+        {
+            builder.UseWebRoot(_webRoot);
+        }
 
         var settings = new Dictionary<string, string?>
         {

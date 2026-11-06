@@ -7,7 +7,7 @@ No step here needs Docker. Integration tests use SQL Server LocalDB, and local b
 | Tool | Version | Check |
 |---|---|---|
 | .NET SDK | 10.0.401 (see `global.json`) | `dotnet --version` |
-| Node.js | **22.12 or later** (Vite 8 needs 20.19+, Vitest 5 and react-router 8 need 22+) | `node -v` |
+| Node.js | **26 or later** (`.node-version` pins 26.13.0; Vite 8 and Vitest 5 need 22+) | `node -v` |
 | SQL Server LocalDB | 2019 (15.x) or later | `sqllocaldb versions` |
 | Git | any recent | `git --version` |
 
