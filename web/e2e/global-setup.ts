@@ -25,13 +25,16 @@ export default async function globalSetup(config: FullConfig) {
 
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(`${baseURL}/api/v1/catalog/filters`)
+      // The API caches every 200 for 60 s per full query string, so an empty answer from before the seed finished would
+      // be served for a minute. A unique query string bypasses that cache. The timeout stops one hung request (the
+      // seed holds locks while it runs) from outliving the deadline.
+      const response = await fetch(`${baseURL}/api/v1/catalog/filters?_=${Date.now()}`, { signal: AbortSignal.timeout(10_000) })
       if (response.ok) {
         const filters = (await response.json()) as { priceRange: unknown }
         if (filters.priceRange) return
         last = 'the API answers but the catalogue is still empty'
       } else {
-        last = `HTTP ${response.status}`
+        last = `HTTP ${response.status}: ${(await response.text()).slice(0, 300)}`
       }
     } catch (error) {
       last = error instanceof Error ? error.message : String(error)

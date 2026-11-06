@@ -26,6 +26,9 @@ export default defineConfig({
     url: `${baseURL}/health/live`,
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
+    // The API log (seed, migration and storage warnings) is the only way to diagnose a CI failure; show it in the job log.
+    stdout: process.env.CI ? 'pipe' : 'ignore',
+    stderr: 'pipe',
     env: {
       ASPNETCORE_ENVIRONMENT: 'Development',
       ...(process.env.ConnectionStrings__Catalog ? { ConnectionStrings__Catalog: process.env.ConnectionStrings__Catalog } : {}),
