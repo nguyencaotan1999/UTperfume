@@ -41,8 +41,8 @@ Only staff use the admin side, and the public side is anonymous. The SPA and API
 8. **Password reset is in scope for Phase 4 (P4-05 delivers the endpoints and the email abstraction; P4-05a delivers the production sender):**
    - A request always returns 202. The token is valid for 1 hour and is single-use, because the security stamp changes on reset.
    - Signed-in admins can change their own password.
-   - **Email sender:** `IEmailSender<AdminUser>`. The Development implementation logs the link and sends nothing.
-     - **DECISION NEEDED (Engineering Manager to user), OP-1:** this conflicts with `0002` BR-A-31, which says logs never contain reset tokens, while the Development sender writes the reset link (with the token) to the log. The conflict is open. Options: (A) a Development-only exception to BR-A-31, recorded explicitly; or (B) tokens are never logged, and E2E uses a test-only capturing sender. Not decided.
+   - **Email sender:** `IEmailSender<AdminUser>`. The Development implementation (`LoggingEmailSender`) sends nothing and logs only that a message was suppressed; it never logs the reset link or the token.
+     - **Decided (OP-1, user 2026-11-07, option B):** reset tokens and reset links are never logged, in any environment; `0002` BR-A-31 holds without exception. E2E (P4-25) obtains the reset link through a test-only capturing email sender, never from the log. That sender is never registered outside Development.
    - **Production provider and sender (Q-12, user decision 2026-11-06):**
      - Provider: **Gmail**, authenticated as the provider account the user named. That account address is not recorded in the project documents.
      - Sender address: the sender address the user named. It is not recorded in the project documents.
@@ -52,7 +52,7 @@ Only staff use the admin side, and the public side is anonymous. The SPA and API
    - **Verification before production use:** Gmail normally sends only as the authenticated account or a verified "Send mail as" alias, and an app password requires 2-Step Verification on the account. The implementer and the user must confirm that the sender address is accepted for the provider account; otherwise Gmail may reject or rewrite the sender.
    - **Risk (accepted by the user, to be reviewed before go-live):** Gmail sending limits apply, and a personal Gmail account is a non-enterprise production dependency (`0002` R-A-06).
    - Until the provider is wired (P4-05a) and its credential is configured, and as a fallback afterwards, production reset is admin-assisted.
-     - **DECISION NEEDED (Engineering Manager to user), OP-2:** the behaviour of a reset request outside Development before P4-05a exists is open. Options: (A) return 202 as always, send nothing, and log only that no email was sent (no token, no address); or (B) return an error until P4-05a is delivered. Not decided.
+     - **Decided (OP-2, user 2026-11-07, option A):** outside Development, before P4-05a exists, a reset request returns 202 as usual, sends no email, and logs only the fact that no email was sent (no token, no email address, no link). P4-05a remains blocked on the sender setup, unchanged.
 9. **Data Protection keys** (cookies, antiforgery and reset tokens) are persisted to a private Blob container before deployment (Phase 5). Without that, every restart signs all admins out and invalidates reset links.
 10. **Two-factor sign-in (TOTP)** is supported by the default token providers but not enforced. **Q-14, user decision 2026-11-06: not required before go-live.** The security risk (a single stolen password gives full admin access) is accepted and recorded in `0002` R-A-07. It can be enabled later without a schema change.
 

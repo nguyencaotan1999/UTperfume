@@ -188,7 +188,8 @@ No new dependency and no change to the approved stack are introduced. The databa
   - Every successful admin write sets `UpdatedAtUtc` and `UpdatedBy` (the Identity user ID as text) on the changed row; images set `CreatedAtUtc` and `CreatedBy`.
   - Structured log events are written for: sign-in success, sign-in failure, lockout, sign-out, password-reset request and confirmation, password change, admin user create, deactivate, reactivate, unlock and temporary-password set, and every catalogue create, update, delete, publish, archive and image upload or delete. Each event records the action, the entity type and ID, the acting user ID, the client IP and the trace ID.
   - Logs never contain passwords, cookies, antiforgery or reset tokens. A failed sign-in for an unknown email logs no email address.
-  - **DECISION NEEDED (Engineering Manager to user), OP-1:** architecture §7.3 and ADR-0010 §8 say the Development `LoggingEmailSender` writes the reset link (with the token) to the log, which conflicts with the previous point. The conflict is open. Options: (A) a Development-only exception to BR-A-31, recorded explicitly; or (B) tokens are never logged, and E2E uses a test-only capturing sender. Not decided.
+  - **This rule has no exception, in any environment, including Development** (OP-1, user decision 2026-11-07, option B). No email sender writes a reset link or reset token to the log. The Development `LoggingEmailSender` logs only that a message was suppressed, never the link or the token. Automated tests, including the password-reset E2E (P4-25), obtain the reset link from a test-only capturing email sender, never from the log (architecture §7.3, ADR-0010 §8).
+  - **Outside Development, before the production sender exists (P4-05a)** (OP-2, user decision 2026-11-07, option A): a password-reset request returns 202 as usual, sends no email, and logs only the fact that no email was sent. That log entry contains no token, no email address and no link.
   - **Decided (D-A3, user 2026-11-06):** the row audit fields (`UpdatedBy`, `UpdatedAtUtc`, and `CreatedBy`, `CreatedAtUtc` on images) plus application logs are sufficient. There is no persistent audit history table; the `AuditLog` table stays out of scope (database model §7). Audit history is therefore limited to the application log retention period.
 
 ## 6. API Contracts (admin, `/api/v1/admin`)
@@ -382,7 +383,7 @@ A banner is created with its image in one request because `ImageBlobPath` is NOT
 
 ## 9. Decisions (resolved by the user, 2026-11-06)
 
-All decision points of the draft are resolved. Two later points, raised after the P4-05 split, are open and listed in §12 (OP-1 and OP-2).
+All decision points of the draft are resolved. Two later points, OP-1 and OP-2, were raised after the P4-05 split and were decided by the user on 2026-11-07 (rows below and §12).
 
 | ID | Question | Decision | Effect |
 |---|---|---|---|
@@ -392,6 +393,8 @@ All decision points of the draft are resolved. Two later points, raised after th
 | D-A4 | Does public read also cover brand logos, category images and banner images? | **Yes.** They sit in the same public-read `catalog-images` container as product images. | BR-A-27; `0001` §8.1a; ADR-0014 §5 |
 | Q-12 | Password-reset email provider and sender identity | **Decided:** Gmail, sending from the provider account the user named, with the sender address the user named (neither address is recorded in the project documents; see `0001` Q-12 and ADR-0010 §8). The Gmail app password (or equivalent credential) is a secret held only in the deployment secret store. | P4-05a (production sender); risk R-A-06 |
 | Q-14 | Enforce two-factor sign-in (TOTP) for admins before go-live? | **Not required before go-live.** | Risk R-A-07 |
+| OP-1 | May the Development `LoggingEmailSender` write the token-bearing reset link to the log? | **Decided 2026-11-07, option B: no.** Reset tokens and reset links are never logged, in any environment; BR-A-31 has no exception. E2E obtains the reset link through a test-only capturing email sender. | BR-A-31; architecture §7.3; ADR-0010 §8; P4-05, P4-25 |
+| OP-2 | Behaviour of a reset request outside Development before P4-05a exists? | **Decided 2026-11-07, option A:** 202 as usual, no email sent, and only the fact that no email was sent is logged (no token, no address, no link). | BR-A-31; architecture §7.3; ADR-0010 §8; P4-05 |
 
 ## 10. Assumptions
 
@@ -423,7 +426,7 @@ The task split is now in `docs/tasks/0001-phase-plan.md`, Phase 4 (added 2026-11
 
 P4-05 was split on 2026-11-07 with the user's approval. Only **P4-05a** (the production Gmail sender) is **blocked** until the user confirms the sender setup (the open point in `0001` Q-12 and ADR-0010 §8). P4-05 (password reset and change password endpoints and the email abstraction), P4-23 and P4-25 are **not blocked**; they use the Development and test senders only and do not depend on P4-05a.
 
-Open points (not decided; they affect P4-05 and P4-25):
+Points decided by the user on 2026-11-07 (they affect P4-05 and P4-25; see §9):
 
-- **OP-1, DECISION NEEDED (Engineering Manager to user):** BR-A-31 says logs never contain reset tokens, but architecture §7.3 and ADR-0010 §8 say the Development `LoggingEmailSender` writes the reset link (with the token) to the log. Options: (A) a Development-only exception to BR-A-31, recorded explicitly; or (B) tokens are never logged, and E2E uses a test-only capturing sender.
-- **OP-2, DECISION NEEDED (Engineering Manager to user):** the behaviour of a reset request outside Development before P4-05a exists. Options: (A) return 202 as always, send nothing, and log only that no email was sent (no token, no address); or (B) return an error until P4-05a is delivered.
+- **OP-1, decided (option B):** reset tokens and reset links are never written to logs, in any environment; BR-A-31 holds without exception. The Development `LoggingEmailSender` does not log the reset link or the token. P4-25 obtains the reset link through a test-only capturing email sender, never from the log; that sender and any channel the E2E test uses to read from it exist only in Development (or the test host) and are never registered outside Development. Consequence: in Development a developer cannot read a reset link from the log; manual testing uses the capturing sender or admin-assisted reset (BR-A-07).
+- **OP-2, decided (option A):** outside Development, until P4-05a is delivered, `POST /admin/auth/password-reset/request` returns 202 as usual, sends no email, and logs only the fact that no email was sent (no token, no email address, no link). Production reset stays admin-assisted (BR-A-07) until P4-05a is done. P4-05a stays blocked on the sender setup, unchanged.
