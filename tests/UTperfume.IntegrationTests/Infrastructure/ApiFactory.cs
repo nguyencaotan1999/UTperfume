@@ -52,6 +52,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             ["Storage:Images:ConnectionString"] = "UseDevelopmentStorage=true",
             ["Storage:Images:Container"] = "catalog-images",
             ["Storage:Images:PublicBaseUrl"] = InMemoryImageStorage.PublicBaseUrl,
+            // Tests seed their own data; the Development seeder is exercised explicitly in DevelopmentSeedTests.
+            ["DevelopmentSeed:Enabled"] = "false",
         };
         foreach (var (key, value) in _overrides)
         {

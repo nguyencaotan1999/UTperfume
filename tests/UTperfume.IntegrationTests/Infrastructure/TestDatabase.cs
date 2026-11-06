@@ -1,5 +1,7 @@
 using System.Text.RegularExpressions;
 using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
+using UTperfume.Infrastructure.Persistence;
 
 namespace UTperfume.IntegrationTests.Infrastructure;
 
@@ -39,14 +41,36 @@ public sealed partial class TestDatabase : IAsyncLifetime
     /// <summary>Connection string of the per-run database.</summary>
     public string ConnectionString { get; }
 
+    /// <summary>Catalogue tables in foreign-key delete order (children first). Concentration is seeded and kept.</summary>
+    public static readonly string[] CatalogTablesInDeleteOrder =
+    [
+        "catalog.ProductNote",
+        "catalog.ProductCategory",
+        "catalog.ProductImage",
+        "catalog.ProductVariant",
+        "catalog.Product",
+        "catalog.FragranceNote",
+        "catalog.Category",
+        "catalog.Brand",
+        "catalog.HomeBanner",
+    ];
+
+    public AppDbContext CreateContext() =>
+        new(new DbContextOptionsBuilder<AppDbContext>().UseSqlServer(ConnectionString).Options);
+
+    public Task ResetCatalogAsync() => ResetAsync(CatalogTablesInDeleteOrder);
+
     public async ValueTask InitializeAsync()
     {
-        // Migrations are applied here once AppDbContext exists (P1-02): MigrateAsync, never EnsureCreated.
         await using var connection = new SqlConnection(_serverConnectionString);
         await connection.OpenAsync();
         await using var command = connection.CreateCommand();
         command.CommandText = $"CREATE DATABASE [{DatabaseName}]";
         await command.ExecuteNonQueryAsync();
+
+        // MigrateAsync, never EnsureCreated, so the migrations themselves are tested.
+        await using var context = CreateContext();
+        await context.Database.MigrateAsync();
     }
 
     public async ValueTask DisposeAsync()

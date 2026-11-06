@@ -37,6 +37,8 @@ if (!isOpenApiGeneration)
 if (builder.Environment.IsDevelopment())
 {
     builder.Services.AddHostedService<DevelopmentStorageInitializer>();
+    builder.Services.AddDevelopmentSeeding(builder.Environment.ContentRootPath);
+    builder.Services.AddHostedService<DevelopmentDataInitializer>();
 }
 
 var app = builder.Build();

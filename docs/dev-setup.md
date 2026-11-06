@@ -94,6 +94,24 @@ npx playwright test
 
 `dotnet build` regenerates `openapi/v1.json`. It must not change unless the API contract changed.
 
+## 6. Database migrations and running the app with seed data
+
+Install the local tools once with `dotnet tool restore`.
+
+**Always pass `--connection` explicitly to `dotnet ef database update`.** The design-time factory (`AppDbContextFactory`) falls back to the `ConnectionStrings__Catalog` environment variable, and otherwise to a placeholder LocalDB name. Without `--connection` you could update a database you did not intend to. `migrations add` and `migrations script` do not connect, so they need no connection.
+
+```powershell
+dotnet ef database update -p src/UTperfume.Infrastructure -s src/UTperfume.Api `
+  --connection "Server=(localdb)\MSSQLLocalDB;Database=<your-dev-database>;Integrated Security=true;TrustServerCertificate=true"
+```
+
+To run the app in Development with the sample catalogue, set `ConnectionStrings:Catalog` for your own database. On startup the app (Development only) applies migrations and seeds about 40 products once, and skips seeding when products exist. If no connection string is set, it logs that seeding was skipped and still starts.
+
+- Environment variable for the current session: `$env:ConnectionStrings__Catalog = "Server=<server>\<instance>;Database=<your-dev-database>;Integrated Security=true;TrustServerCertificate=true"`
+- Or user-secrets (stored outside the repository): `dotnet user-secrets set "ConnectionStrings:Catalog" "<connection-string>" --project src/UTperfume.Api` (run `dotnet user-secrets init --project src/UTperfume.Api` once first).
+
+Never commit a real server name, connection string or credential. Start Azurite (section 2) first if you want the placeholder images uploaded; otherwise only the blob paths are seeded.
+
 ## Secrets
 
 - Local secrets go in `dotnet user-secrets` (API project) or environment variables. Nothing secret is committed.
@@ -109,7 +127,7 @@ Run on 2026-11-05 on a Windows development machine (user `<your-windows-user>`).
 | 1 | `sqllocaldb info MSSQLLocalDB` | Passed after the instance was auto-created: version 17.0.4025.3, auto-create Yes, state Running. Before first start it reported "The automatic instance MSSQLLocalDB is not created", which is normal. |
 | 2 | `sqllocaldb start MSSQLLocalDB` | Passed. |
 | 3 | Create and drop databases as the current user | Passed. The integration tests create and drop `UTperfume_Test_*` databases; none were left behind. Collation `SQL_Latin1_General_CP1_CI_AS`. |
-| 4 | `dotnet ef database update` on LocalDB | **Not run.** There is no `DbContext` or migration yet (P1-02). It was also outside the Phase 0 instructions. A substitute test (`Engine_supports_schemas_filtered_unique_indexes_rowversion_and_check_constraints`) passed on LocalDB: schemas, filtered unique index, `rowversion` and CHECK constraints work. Repeat the real check in P1-02. |
+| 4 | `dotnet ef database update` on LocalDB | Passed (2026-11-06, P1-02). Migration `InitialCatalog` applied to a throwaway database on `(localdb)\MSSQLLocalDB` with `--connection`: 10 tables in schema `catalog`, 6 Concentration rows, the filtered unique primary-image index present. The database was dropped afterwards. |
 | 5 | Azurite via `npx`, ports 10000-10002 | Passed. Ports free and not reserved; Azurite listened on all three. It needs `--skipApiVersionCheck` (see above). The API created the `catalog-images` container on Development startup. |
 | 6 | `dotnet dev-certs https` | `--check` passed: a valid certificate exists (valid until 2026-12-17). `--trust` was **not run** because it opens a Windows prompt. |
-| 7 | `npx playwright install chromium` | **Failed**: `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` (TLS inspection on this network). See section 4. |
+| 7 | `npx playwright install chromium` | Passed (Chromium installed; earlier it failed with `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` under TLS inspection, see section 4). `npx playwright test` passed 3 of 3 on Node v26.13.0. |
