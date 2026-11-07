@@ -334,6 +334,7 @@ public sealed class AdminAntiforgeryTests : IAsyncLifetime, IDisposable
         var endpoints = AdminUnsafeEndpoints(_factory.Services.GetRequiredService<EndpointDataSource>().Endpoints);
         endpoints.Should().NotBeEmpty();
         var before = await RowCountsAsync();
+        var visited = new List<string>();
 
         foreach (var endpoint in endpoints)
         {
@@ -345,10 +346,36 @@ public sealed class AdminAntiforgeryTests : IAsyncLifetime, IDisposable
                 using var response = await client.SendAsync(request, Ct);
 
                 await AssertAntiforgeryInvalidAsync(response, $"{method} {endpoint.RoutePattern.RawText}");
+                visited.Add($"{method} {endpoint.RoutePattern.RawText}");
             }
         }
 
+        // F2: the sweep must really have visited the endpoints, not an empty or shrunken list.
+        visited.Should().HaveCountGreaterThanOrEqualTo(10, "the auth, test and image endpoints are all unsafe admin endpoints");
+        visited.Should().Contain($"POST {AdminPrefix}/auth/sign-in");
+        visited.Should().Contain($"POST {AdminPrefix}/test/uploads");
+        visited.Should().Contain($"POST {AdminPrefix}/test/file-bind");
+        visited.Should().Contain($"POST {AdminPrefix}/products/{{id:int}}/images");
+        visited.Should().Contain($"DELETE {AdminPrefix}/products/{{id:int}}/images/{{imageId:int}}");
         (await RowCountsAsync()).Should().Be(before, "a rejected request changes nothing");
+    }
+
+    // F1 regression: an endpoint that binds IFormFile and has no DisableAntiforgery() of its own must not answer 500.
+    [Fact]
+    public async Task F1_AnIFormFileRouteWithoutItsOwnDisableAntiforgery_Returns200WithAValidToken_And400WithAForgedToken()
+    {
+        using var client = await SignedInClientAsync(EmailA);
+        var xsrf = await client.FetchXsrfAsync(Ct);
+        var endpoint = _factory.Services.GetRequiredService<EndpointDataSource>().Endpoints.OfType<RouteEndpoint>()
+            .Single(e => e.RoutePattern.RawText == $"{AdminPrefix}/test/file-bind");
+        endpoint.Metadata.OfType<Microsoft.AspNetCore.Antiforgery.IAntiforgeryMetadata>().Last().RequiresValidation
+            .Should().BeFalse("the admin group switches the framework check off; the application validates the token itself");
+
+        using var valid = await client.SendAsync(Multipart("/test/file-bind", xsrf), Ct);
+        using var forged = await client.SendAsync(Multipart("/test/file-bind", "forged-token"), Ct);
+
+        valid.StatusCode.Should().Be(HttpStatusCode.OK);
+        await AssertAntiforgeryInvalidAsync(forged);
     }
 
     private static HttpContent BodyFor(RouteEndpoint endpoint)

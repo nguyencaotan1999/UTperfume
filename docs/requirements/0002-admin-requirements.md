@@ -113,6 +113,7 @@ No new dependency and no change to the approved stack are introduced. The databa
   - Brand, Category, Product, ProductVariant and HomeBanner carry `rowVersion` (base64 string) in admin DTOs.
   - Every update and every state action (publish, archive) on these entities must send the `rowVersion` last read. Missing returns 400; stale returns 409 `concurrency_conflict` and nothing is changed.
   - FragranceNote and ProductImage have no `rowVersion` column (database model §3.6, §3.7). Their updates are last-write-wins. This is accepted because they hold little data.
+  - **Decided (P4-06, Manager 2026-11-07):** image deletes are also last-write-wins: `DELETE /products/{id}/images/{imageId}` takes no `rowVersion`. A repeated delete of the same image (or a delete of an image already removed by another admin) returns 404, as in §6.5.
 - **BR-A-11: Field validation** follows architecture §6.6 and `0001` BR-05 to BR-07, BR-23 and BR-25:
   - Names are required and trimmed, with the maximum lengths of the database model.
   - The slug is optional on create and is then generated from the name (`0001` BR-25). A supplied slug must match the slug format.
@@ -161,7 +162,10 @@ No new dependency and no change to the approved stack are introduced. The databa
 ### 5.3 Images
 
 - **BR-A-23: Accepted types.** JPEG, PNG and WebP only. The type is detected from the file signature (JPEG `FF D8 FF`, PNG `89 50 4E 47`, WebP `RIFF....WEBP`) and must match the declared content type. SVG, GIF, HEIC, AVIF and anything else return 415 `unsupported_image_type`. A signature that does not match the declared type also returns 415 `unsupported_image_type`.
+  - **Implemented rule (P4-06, Manager decision 2026-11-07):** PNG detection checks only the 4-byte signature `89 50 4E 47`; the remaining bytes of the 8-byte PNG signature are not checked. JPEG and WebP detection are as stated above.
 - **BR-A-24: Size.** One file per request, at most **5 MB** (5,242,880 bytes). Larger returns 413. An empty or missing file returns 400. Nothing is stored on any failure.
+  - **Decided (P4-06, Manager 2026-11-07):** the server request-body limit for image uploads is 5 MB plus 64 KB multipart overhead (5,308,416 bytes). A file over 5,242,880 bytes in a request inside that limit is rejected by the upload service with 413 `image_too_large`. A request body over 5,308,416 bytes is rejected by the server before the service runs, with 413 ProblemDetails **without** a `code`. Clients must therefore decide on the HTTP status 413, not on the code.
+  - **Decided (P4-06, Manager 2026-11-07):** if Azure Storage (Azurite in development) is unreachable during an upload, the response is 503 `storage_unavailable` and nothing is stored (§7).
 - **BR-A-25: Count.**
   - A product has at most **6** images (D-A2, decided by the user 2026-11-06). A 7th upload returns 422 `image_limit_reached`. The limit is a single named constant in the Application layer.
   - A brand has at most one logo, a category one image, and a banner one image. Uploading a new one **replaces** the old one: the new blob is written, the row is updated, and then the old blob is deleted (best effort, logged).
@@ -202,6 +206,15 @@ No new dependency and no change to the approved stack are introduced. The databa
 - **Antiforgery:** required on every POST, PUT, PATCH and DELETE (BR-A-04).
 - **IDs:** numeric in admin routes (ADR-0007). An unknown ID returns 404 ProblemDetails.
 - **Errors:** ProblemDetails per ADR-0011 and architecture §6.2. Codes introduced here: `duplicate_name`, `duplicate_volume`, `duplicate_email`, `in_use`, `publish_requirements_not_met`, `product_was_published`, `published_product_requirement`, `image_limit_reached`, `cannot_deactivate_self`, `last_active_admin`.
+- **Image upload codes and statuses** (every endpoint that calls the P4-06 upload service: product images, brand logo, category image, banner create and banner image):
+
+  | Status | `code` | When |
+  |---|---|---|
+  | 413 | `image_too_large` | File over 5,242,880 bytes in a request within the server body limit (BR-A-24; decided 2026-11-07) |
+  | 413 | none | Request body over 5,308,416 bytes (5 MB + 64 KB), rejected by the server before the service runs (BR-A-24) |
+  | 415 | `unsupported_image_type` | Type not allowed or signature mismatch (BR-A-23) |
+  | 422 | `image_limit_reached` | 7th product image (BR-A-25) |
+  | 503 | `storage_unavailable` | Blob storage unreachable during upload; nothing stored (BR-A-24, §7; decided 2026-11-07) |
 - **Responses:** create returns 201 with `Location` and the DTO; update and state actions return 200 with the DTO; delete returns 204. All admin responses carry `Cache-Control: no-store`.
 - **Lists:** `PagedResult<T>` (ADR-0008) with `page` (>= 1) and `pageSize` (1–100, default 25) where marked "paged"; small lookups return plain arrays.
 
@@ -266,9 +279,9 @@ Error status legend used below: **V** = 400 validation, **A** = 400 `antiforgery
 | `POST /products/{id}/variants` | `VariantWrite` | 201 `AdminVariant` | V, A, U, F, N, C |
 | `PUT /products/{id}/variants/{variantId}` | `VariantWrite` + `rowVersion` | 200 `AdminVariant` | V, A, U, F, N, C, B |
 | `PUT /products/{id}/notes` | `{ top: int[], heart: int[], base: int[] }` | 200 `AdminProductDetail` | V, A, U, F, N |
-| `POST /products/{id}/images` | multipart `file`, `altText?`, `isPrimary?` | 201 `AdminImage` | V, A, U, F, N, 413, 415, B |
+| `POST /products/{id}/images` | multipart `file`, `altText?`, `isPrimary?` | 201 `AdminImage` | V, A, U, F, N, 413 (`image_too_large`, or no code over the server body limit), 415, B, 503 (`storage_unavailable`) |
 | `PUT /products/{id}/images/{imageId}` | `{ altText?, sortOrder, isPrimary }` | 200 `AdminImage` | V, A, U, F, N |
-| `DELETE /products/{id}/images/{imageId}` | — | 204 | A, U, F, N, B |
+| `DELETE /products/{id}/images/{imageId}` | — (no `rowVersion`; last-write-wins, BR-A-10) | 204 | A, U, F, N (also for a repeated delete of the same image), B |
 | `GET /concentrations` | — | 200 `{ id, code, name, isActive }[]` | U, F |
 | `GET /fragrance-notes` (`q`) | — | 200 `{ id, name, slug, productCount }[]` | V, U, F |
 | `POST /fragrance-notes` | `{ name, slug? }` | 201 | V, A, U, F, C |
@@ -305,10 +318,12 @@ A banner is created with its image in one request because `ImageBlobPath` is NOT
 | Brand deactivated while its products are Published | Allowed; the products disappear publicly (`0001` BR-01) and come back when the brand is reactivated. |
 | Upload with a `.jpg` name but PNG bytes and declared `image/png` | Accepted as PNG; stored with `.png` extension; the name is only display data. |
 | Upload with declared `image/jpeg` but PNG bytes | 415; nothing stored. |
-| Upload of exactly 5,242,880 bytes / one byte more | Accepted / 413. |
+| Upload of exactly 5,242,880 bytes / one byte more | Accepted / 413 `image_too_large`. |
+| Request body over 5,308,416 bytes (5 MB + 64 KB) | 413 ProblemDetails without a `code`, rejected by the server before the upload service runs (BR-A-24). |
+| Repeated delete of the same product image | 404 (BR-A-10; no `rowVersion`). |
 | Blob upload succeeds, database insert fails | The blob is deleted (best effort, logged); the client gets 500 or the mapped error. |
 | Row deleted, blob delete fails | 204 to the client; the failure is logged; orphan cleanup is deferred (ADR-0014). |
-| Azure Storage or Azurite unreachable during upload | 503 ProblemDetails; nothing is stored. Other admin functions keep working. |
+| Azure Storage or Azurite unreachable during upload | 503 ProblemDetails with `code=storage_unavailable`; nothing is stored. Other admin functions keep working. |
 | Session expires while the admin edits a form | Save returns 401; the UI redirects to sign-in. Unsaved changes are lost (accepted; no draft autosave). |
 | Antiforgery token from before sign-in used after sign-in | 400 `antiforgery_invalid`; the SPA fetches a new token and retries once. |
 | Admin deactivates a colleague who is currently signed in | The colleague's next call fails within 5 minutes (BR-A-09). |
@@ -370,7 +385,7 @@ A banner is created with its image in one request because `ImageBlobPath` is NOT
 
 - **AC-A-30:** Given a valid 1 MB WebP upload for a product with no images, then 201, the image is primary, the blob path matches `products/{productId}/{guid}.webp`, the returned `url` starts with `Storage:Images:PublicBaseUrl`, and no admin or public DTO contains `blobPath`.
 - **AC-A-31:** Given an upload of an SVG, a GIF, or PNG bytes declared as `image/jpeg`, then 415 `unsupported_image_type` and the fake storage contains no new blob.
-- **AC-A-32:** Given an upload of 5,242,881 bytes, then 413 and nothing is stored. Given exactly 5,242,880 bytes of a valid JPEG, then 201.
+- **AC-A-32:** Given an upload of 5,242,881 bytes, then 413 `image_too_large` (code decided 2026-11-07) and nothing is stored. Given exactly 5,242,880 bytes of a valid JPEG, then 201.
 - **AC-A-33:** Given a product with 6 images, when another is uploaded, then 422 `image_limit_reached` and nothing is stored. Given a product with 5 images, when one more is uploaded, then 201. Given two concurrent uploads to a product with 5 images, then exactly one succeeds and the product has 6 images.
 - **AC-A-34:** Given a product with images A (primary) and B, when B is set primary, then A is no longer primary. When the primary is deleted, then the remaining image with the lowest `sortOrder` becomes primary.
 - **AC-A-35:** Given an upload whose original file name is `../../evil.jpg`, then the blob path contains no part of that name, and `originalFileName` is returned only as data.

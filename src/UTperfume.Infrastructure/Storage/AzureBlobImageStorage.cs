@@ -13,7 +13,8 @@ namespace UTperfume.Infrastructure.Storage;
 /// </summary>
 public sealed class AzureBlobImageStorage : IImageStorage
 {
-    private const string ImmutableCacheControl = "public, max-age=31536000, immutable";
+    /// <summary>Written on every blob (BR-A-26): names are unique GUIDs, so a blob is never overwritten and may be cached for a year.</summary>
+    public const string ImmutableCacheControl = "public, max-age=31536000, immutable";
 
     private readonly ImageStorageOptions _options;
     private readonly Lazy<BlobContainerClient> _container;
@@ -23,6 +24,15 @@ public sealed class AzureBlobImageStorage : IImageStorage
         ArgumentNullException.ThrowIfNull(options);
         _options = options.Value;
         _container = new Lazy<BlobContainerClient>(CreateContainerClient, LazyThreadSafetyMode.ExecutionAndPublication);
+    }
+
+    /// <summary>Uses a supplied container client (for example one with a custom transport). Used by tests.</summary>
+    public AzureBlobImageStorage(IOptions<ImageStorageOptions> options, BlobContainerClient container)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(container);
+        _options = options.Value;
+        _container = new Lazy<BlobContainerClient>(() => container);
     }
 
     public async Task UploadAsync(string blobPath, Stream content, string contentType, CancellationToken cancellationToken)
@@ -38,7 +48,14 @@ public sealed class AzureBlobImageStorage : IImageStorage
             // Names are unique GUIDs; refuse to overwrite an existing blob.
             Conditions = new BlobRequestConditions { IfNoneMatch = ETag.All },
         };
-        await blob.UploadAsync(content, options, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await blob.UploadAsync(content, options, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (StorageFailureTranslator.IsUnavailable(exception, cancellationToken))
+        {
+            throw StorageFailureTranslator.ToUnavailable(exception);
+        }
     }
 
     public async Task DeleteAsync(string blobPath, CancellationToken cancellationToken)

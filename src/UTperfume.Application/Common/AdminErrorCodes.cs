@@ -18,6 +18,8 @@ public static class AdminErrorCodes
     public const string PublishedProductRequirement = "published_product_requirement";
     public const string ImageLimitReached = "image_limit_reached";
     public const string UnsupportedImageType = "unsupported_image_type";
+    public const string ImageTooLarge = "image_too_large";
+    public const string StorageUnavailable = "storage_unavailable";
     public const string CannotDeactivateSelf = "cannot_deactivate_self";
     public const string LastActiveAdmin = "last_active_admin";
 }

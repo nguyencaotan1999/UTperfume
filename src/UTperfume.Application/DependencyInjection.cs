@@ -24,6 +24,8 @@ public static class DependencyInjection
         services.AddScoped<HomeQueries>();
         services.AddScoped<SitemapQueries>();
         services.AddScoped<IAdminAudit, AdminAudit>();
+        services.AddScoped<UTperfume.Application.Features.Admin.Images.ImageUploadService>();
+        services.AddScoped<UTperfume.Application.Features.Admin.Images.ProductImageCommands>();
         return services;
     }
 }

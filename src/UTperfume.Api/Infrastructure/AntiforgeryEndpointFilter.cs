@@ -32,6 +32,11 @@ internal static class AdminAntiforgery
     {
         builder.Add(endpoint => endpoint.Metadata.Add(RequiresAdminAntiforgeryMetadata.Instance));
         builder.AddEndpointFilter<TBuilder, AntiforgeryEndpointFilter>();
+
+        // An endpoint that binds IFormFile gets the framework's own antiforgery metadata, and the framework then throws
+        // (HTTP 500) unless its UseAntiforgery middleware ran. This application validates the token itself, before binding
+        // (AdminAntiforgeryMiddleware and the filter above), so the framework's check is switched off for the group.
+        builder.DisableAntiforgery();
         return builder;
     }
 

@@ -186,12 +186,13 @@ internal sealed class TestAdminRoutes : IAdminRouteContributor
             return Results.Ok(new { body.Name });
         });
 
-        // IFormFile-bound route (M1). DisableAntiforgery: the framework's own check is not the one under test.
+        // IFormFile-bound route (M1, F1). Deliberately no DisableAntiforgery() of its own: the admin group must make the
+        // framework's antiforgery metadata harmless, so a valid token returns 200 instead of a 500.
         group.MapPost("/file-bind", (IFormFile file) =>
         {
             Interlocked.Increment(ref _fileBindRuns);
             return Results.Ok(new { file.Length });
-        }).DisableAntiforgery();
+        });
 
         group.MapPost("/products/{productId:int}/images", async (
             int productId, AppDbContext db, IAdminWriteSession session, CancellationToken ct) =>

@@ -39,6 +39,23 @@ public interface IAdminWriteSession
     Task<Error?> SaveServerSideChangesAsync(CancellationToken cancellationToken);
 }
 
+/// <summary>A database transaction held by an admin write. Disposing without <see cref="CommitAsync"/> rolls back.</summary>
+public interface IAdminTransaction : IAsyncDisposable
+{
+    Task CommitAsync(CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// Serialises writes that depend on the product's child rows (BR-A-25): starts a transaction and takes an update lock
+/// on the product row, so two concurrent image uploads or deletes for the same product cannot both pass the count check.
+/// The lock does not change the product's row version, so it never invalidates a product form that an admin has open.
+/// </summary>
+public interface IProductWriteLock
+{
+    /// <summary>Returns null (and starts no transaction) when the product does not exist.</summary>
+    Task<IAdminTransaction?> LockProductAsync(int productId, CancellationToken cancellationToken);
+}
+
 /// <summary>Evicts the public output-cache entries (tag <c>catalog</c>) after an admin write that changed public data (BR-A-21).</summary>
 public interface IPublicCatalogCache
 {

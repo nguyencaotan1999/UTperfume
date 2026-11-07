@@ -57,6 +57,7 @@ internal static class AdminEndpoints
             .Produces<AdminMe>();
 
         admin.MapAdminAuthEndpoints();
+        admin.MapAdminProductImageEndpoints();
 
         foreach (var contributor in app.ServiceProvider.GetServices<IAdminRouteContributor>())
         {

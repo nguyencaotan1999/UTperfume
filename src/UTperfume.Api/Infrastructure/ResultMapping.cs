@@ -36,6 +36,9 @@ internal static class ResultMapping
                 error.Details!.ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal)),
             ErrorKind.Conflict => CodedProblem(StatusCodes.Status409Conflict, "Conflict", error.Code),
             ErrorKind.Unprocessable => CodedProblem(StatusCodes.Status422UnprocessableEntity, "Unprocessable Entity", error.Code),
+            ErrorKind.PayloadTooLarge => CodedProblem(StatusCodes.Status413PayloadTooLarge, "Payload Too Large", error.Code),
+            ErrorKind.UnsupportedMediaType => CodedProblem(StatusCodes.Status415UnsupportedMediaType, "Unsupported Media Type", error.Code),
+            ErrorKind.ServiceUnavailable => CodedProblem(StatusCodes.Status503ServiceUnavailable, "Service Unavailable", error.Code),
             _ => TypedResults.Problem(statusCode: StatusCodes.Status500InternalServerError),
         };
     }

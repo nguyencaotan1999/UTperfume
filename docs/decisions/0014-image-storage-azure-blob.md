@@ -5,7 +5,7 @@
   - Anonymous public read access on the `catalog-images` container (Q-13) is **Accepted** (user decision 2026-11-06). Its scope covers product images, brand logos, category images and banner images (D-A4, user decision 2026-11-06).
   - At most 6 images per product (D-A2, user decision 2026-11-06).
   - The non-production storage account is provisioned by the user (D-12, user decision 2026-11-06).
-- Date: 2026-11-05 (amended 2026-11-06)
+- Date: 2026-11-05 (amended 2026-11-06; §8 accepted risks added 2026-11-07)
 - Related: architecture §2, §7.4, §9, §11; database model §1, §3.6; requirements BR-30, AC-A10
 
 ## Context
@@ -55,6 +55,8 @@ There are two options for upload:
 
    In Azure there are no secrets, only Managed Identity.
 8. **Deletion:** delete the row, then the blob. Failures are logged. A scheduled cleanup of orphan blobs is deferred.
+   - **Accepted (P4-06, Manager 2026-11-07):** an orphan blob also remains when the process dies between the blob write and the database commit (no compensation runs), and in the ambiguous-commit case (the commit reaches SQL Server but the client sees a failure, so the compensating delete may remove the blob of a committed row, or the row may be missing for a stored blob). Both are rare, logged where possible, and covered by the deferred orphan cleanup; no further mitigation in this release.
+   - **Accepted (P4-06, Manager 2026-11-07):** the product write lock (`IProductWriteLock`, an `UPDLOCK` on the product row inside the transaction) is held while the blob is uploaded. A slow storage call therefore blocks other locked writes to the **same product** (image upload, image delete, and publish from P4-12) until it finishes, at most until the waiting request's SQL command timeout. Other products are not affected. Accepted because uploads are few and low volume (AS-A-04).
 
 ## Consequences
 

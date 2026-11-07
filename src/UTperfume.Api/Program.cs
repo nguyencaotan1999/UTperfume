@@ -25,7 +25,10 @@ builder.Services.ConfigureHttpJsonOptions(o =>
     // describe every integer as "integer or string", which leaks into the generated TypeScript types.
     o.SerializerOptions.NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.Strict;
 });
-builder.Services.AddOpenApi(o => o.AddOperationTransformer<PublicQueryParameterTransformer>());
+builder.Services.AddOpenApi(o => {
+    o.AddOperationTransformer<PublicQueryParameterTransformer>();
+    o.AddOperationTransformer<AdminFormBooleanTransformer>();
+});
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddPublicTraffic();
 builder.Services.AddAdminWriteFoundation();

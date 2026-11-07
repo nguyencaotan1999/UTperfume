@@ -94,6 +94,31 @@ public sealed class OpenApiContractTests(TestDatabase database) : CatalogApiTest
         related.GetProperty("schema").GetProperty("type").GetString().Should().Be("integer");
     }
 
+    private async Task<JsonElement> UploadOperationAsync() =>
+        (await DocumentAsync()).GetProperty("paths").GetProperty("/api/v1/admin/products/{id}/images").GetProperty("post");
+
+    [Fact]
+    public async Task Admin_upload_documents_isPrimary_as_a_boolean_in_the_multipart_schema()
+    {
+        var schema = (await UploadOperationAsync()).GetProperty("requestBody").GetProperty("content")
+            .GetProperty("multipart/form-data").GetProperty("schema");
+
+        var isPrimary = schema.GetProperty("allOf").EnumerateArray()
+            .Select(part => part.GetProperty("properties"))
+            .Single(props => props.TryGetProperty("isPrimary", out _))
+            .GetProperty("isPrimary");
+
+        isPrimary.GetProperty("type").GetString().Should().Be("boolean");
+    }
+
+    [Fact]
+    public async Task Admin_upload_declares_the_503_storage_unavailable_response()
+    {
+        var responses = (await UploadOperationAsync()).GetProperty("responses");
+
+        responses.TryGetProperty("503", out _).Should().BeTrue();
+    }
+
     [Fact]
     public async Task Strict_number_handling_keeps_every_public_money_value_a_json_number()
     {

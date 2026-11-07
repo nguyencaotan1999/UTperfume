@@ -40,6 +40,7 @@ public static class DependencyInjection
         });
         services.AddScoped<ICatalogDbContext>(static sp => sp.GetRequiredService<AppDbContext>());
         services.AddScoped<IAdminWriteSession, AdminWriteSession>();
+        services.AddScoped<IProductWriteLock, ProductWriteLock>();
 
         return services;
     }

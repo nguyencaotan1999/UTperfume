@@ -10,6 +10,15 @@ public enum ErrorKind
 
     /// <summary>422 business-rule violation with a machine-readable <see cref="Error.Code"/>.</summary>
     Unprocessable,
+
+    /// <summary>413: an uploaded file exceeds the size limit (BR-A-24).</summary>
+    PayloadTooLarge,
+
+    /// <summary>415 with a machine-readable <see cref="Error.Code"/>: an uploaded file is not an accepted type (BR-A-23).</summary>
+    UnsupportedMediaType,
+
+    /// <summary>503 with a machine-readable <see cref="Error.Code"/>: a dependency such as image storage is unreachable.</summary>
+    ServiceUnavailable,
 }
 
 /// <summary>A typed handler error. The API layer maps it to 404, 400, 409 or 422 (ADR-0011).</summary>
@@ -40,6 +49,12 @@ public sealed class Result<T>
     public static Result<T> Conflict(string code) => new(default, new Error(ErrorKind.Conflict, Code: code));
 
     public static Result<T> Unprocessable(string code) => new(default, new Error(ErrorKind.Unprocessable, Code: code));
+
+    public static Result<T> PayloadTooLarge(string code) => new(default, new Error(ErrorKind.PayloadTooLarge, Code: code));
+
+    public static Result<T> UnsupportedMediaType(string code) => new(default, new Error(ErrorKind.UnsupportedMediaType, Code: code));
+
+    public static Result<T> ServiceUnavailable(string code) => new(default, new Error(ErrorKind.ServiceUnavailable, Code: code));
 
     public static Result<T> Failure(Error error)
     {

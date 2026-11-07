@@ -219,11 +219,12 @@ All non-2xx responses from `/api/*` are RFC 9457 `application/problem+json` with
 | 403 | Authenticated but not `Catalog.Admin` | ProblemDetails |
 | 404 | Unknown, invisible or inactive resource; unknown `/api` route | ProblemDetails (no reason disclosed) |
 | 409 | Admin: duplicate slug or SKU, or concurrency mismatch | ProblemDetails with `code` (`duplicate_slug`, `duplicate_sku`, `concurrency_conflict`) |
-| 413 | Admin image upload over 5 MB | ProblemDetails |
+| 413 | Admin image upload over 5 MB | ProblemDetails with `code=image_too_large` when the upload service rejects the file; ProblemDetails without `code` when the request body exceeds the server limit of 5 MB + 64 KB (`0002` BR-A-24, decided 2026-11-07) |
 | 415 | Admin image upload that is not JPEG, PNG or WebP by signature, or whose signature does not match the declared content type | ProblemDetails with `code=unsupported_image_type` |
 | 422 | Admin business-rule violation | ProblemDetails with `code` |
 | 429 | Rate limited | ProblemDetails, `Retry-After` header |
 | 500 | Unhandled | Generic ProblemDetails |
+| 503 | Admin image upload while blob storage is unreachable; nothing stored | ProblemDetails with `code=storage_unavailable` (`0002` BR-A-24, §7, decided 2026-11-07) |
 
 The cookie handler's redirects to a login page are disabled. The API returns 401 or 403 ProblemDetails instead (§7).
 
