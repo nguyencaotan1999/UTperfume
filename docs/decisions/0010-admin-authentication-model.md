@@ -1,7 +1,7 @@
 # ADR-0010: Admin authentication with ASP.NET Core Identity and a same-origin cookie
 
 - Status: **Accepted** (user decision 2026-11-05: ASP.NET Core Identity; Entra ID is not the plan). The email provider and sender (Q-12) and two-factor sign-in (Q-14: not required before go-live) were decided by the user on 2026-11-06, as was the single admin role (D-A1).
-- Date: 2026-11-05 (amended 2026-11-06)
+- Date: 2026-11-05 (amended 2026-11-06; amended 2026-11-07 for the user decisions D-A5 (sign-out refreshes the security stamp) and D-A6 (bootstrap approval switch) recorded in `0002` §9, and the two antiforgery cookies)
 - Related: ADR-0007; architecture §6.5, §7, §9; requirements BR-29, AC-A1 to AC-A9
 
 ## Context
@@ -18,9 +18,14 @@ Only staff use the admin side, and the public side is anonymous. The SPA and API
    - 30-minute sliding idle timeout, 8-hour absolute limit, no persistent "remember me".
    - Login redirects are replaced with 401 or 403 ProblemDetails.
    - The security stamp is revalidated every 5 minutes.
+   - **Sign-out (D-A5, user decision 2026-11-07, option (b)):** `POST /api/v1/admin/auth/sign-out` clears the session cookie and, when the request carries a valid session, also refreshes that user's security stamp. A copy of the session cookie therefore stops working at the next revalidation, at the latest 5 minutes after sign-out (normal case; see `0002` R-A-09 for the fail-open case). Accepted side effect: every other session of the same user also ends within that interval ("sign out everywhere"). The remaining 5-minute window is risk `0002` R-A-09. Without a session, sign-out changes nothing and still returns 204 (`0002` BR-A-03). A failed stamp refresh is accepted as fail-open: the cookie is still cleared and 204 returned, a copied cookie and other sessions stay valid until the 30-minute idle or 8-hour absolute limit, and the failure is logged as event 5103 at Warning (user ID, client IP and trace ID only); operations should alert on 5103 (Phase 5, `0002` R-A-09).
    - *Reason:* on the same origin, an HttpOnly cookie keeps the credential out of JavaScript. Bearer tokens would need storage in the browser, where XSS could steal them, plus refresh logic.
 3. **CSRF protection:**
-   - ASP.NET Core antiforgery, with the token sent in the `X-XSRF-TOKEN` header from the readable cookie `__Host-utp-xsrf`. `GET /api/v1/admin/auth/antiforgery` issues it, and it is re-issued after sign-in.
+   - ASP.NET Core antiforgery (double-submit pattern) with **two cookies**, both `Secure`, `SameSite=Strict` and `Path=/`:
+     - `__Host-utp-antiforgery`: `HttpOnly`. It holds the antiforgery **cookie token**, which the framework compares with the request token. JavaScript never needs it, so it is kept out of reach of scripts.
+     - `__Host-utp-xsrf`: **not** `HttpOnly`, so the SPA can read it. It holds the **request token**. The SPA URL-decodes the cookie value and sends it in the `X-XSRF-TOKEN` header on POST, PUT, PATCH and DELETE.
+     - *Why two:* ASP.NET Core antiforgery needs a cookie token and a matching request token. The cookie token is sent by the browser automatically and must stay HttpOnly; the request token must be readable by the SPA so it can be copied into a header, which a cross-site attacker cannot do.
+   - `GET /api/v1/admin/auth/antiforgery` issues both cookies (204). It is not rate-limited (`0002` §6.2, review L-2). The SPA calls it again after sign-in and after sign-out, because tokens are bound to the user identity.
    - An endpoint filter validates it on every POST, PUT, PATCH and DELETE under `/api/v1/admin`, **including sign-in**, which prevents login CSRF. Failure returns 400 `antiforgery_invalid`.
    - `SameSite=Strict` is a second layer.
 4. **Lockout:**
@@ -31,7 +36,9 @@ Only staff use the admin side, and the public side is anonymous. The SPA and API
 5. **Password policy:** minimum length 12, at least one digit, upper-case and lower-case letter, 4 unique characters, no symbol requirement. Hashing uses Identity's default PBKDF2.
 6. **Accounts:**
    - No self-registration. The `Catalog.Admin` role is seeded with `HasData`.
-   - The first admin is created by the `bootstrap-admin` command from `Bootstrap:*` secrets, and only when no admin exists. Running it in production requires user approval.
+   - The first admin is created by the `bootstrap-admin` command from `Bootstrap:*` secrets (`Bootstrap:AdminEmail`, `Bootstrap:AdminPassword`, optional `Bootstrap:AdminDisplayName`), and only when no admin exists. The command takes no further argument, so the password can never be passed on the command line; an extra argument is refused (exit code 2). Usage: `docs/dev-setup.md` §8.
+   - **Approval gate (D-A6, user decision 2026-11-07):** outside Development the command refuses to run (exit code 1) unless `Bootstrap:AllowNonDevelopment=true` is set. Setting that switch is the **explicit user-approval gate**: it is set only after the user has approved that specific run (for production this is the approval required by the CLAUDE.md safety rules), and never as a standing setting.
+   - **Removal after use:** straight after the command has run, `Bootstrap:AllowNonDevelopment` and any temporary `Bootstrap:AdminPassword` setting (App Service application setting, environment variable or user-secret) are removed.
    - Later admins are created and deactivated by admins (`AdminUser.IsActive`).
 7. **Authorization:**
    - The `AdminOnly` policy requires the role `Catalog.Admin`.

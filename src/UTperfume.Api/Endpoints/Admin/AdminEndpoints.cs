@@ -6,7 +6,7 @@ namespace UTperfume.Api.Endpoints.Admin;
 internal static class AdminPolicy
 {
     public const string Name = "AdminOnly";
-    public const string Role = "Catalog.Admin";
+    public const string Role = UTperfume.Infrastructure.Identity.AdminRoles.CatalogAdmin;
 
     public static AuthorizationBuilder AddAdminPolicy(this AuthorizationBuilder builder) =>
         builder.AddPolicy(Name, policy => policy.RequireAuthenticatedUser().RequireRole(Role));
@@ -18,7 +18,7 @@ public sealed record AdminMe(string Id, string Email, string DisplayName, IReadO
     internal static AdminMe From(ClaimsPrincipal user) => new(
         user.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
         user.FindFirstValue(ClaimTypes.Email) ?? string.Empty,
-        user.FindFirstValue(ClaimTypes.Name) ?? string.Empty,
+        user.FindFirstValue(UTperfume.Api.Infrastructure.AdminClaimTypes.DisplayName) ?? user.FindFirstValue(ClaimTypes.Name) ?? string.Empty,
         user.FindAll(ClaimTypes.Role).Select(c => c.Value).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList());
 }
 
@@ -53,6 +53,8 @@ internal static class AdminEndpoints
         admin.MapGet("/me", (ClaimsPrincipal user) => TypedResults.Ok(AdminMe.From(user)))
             .WithName("GetAdminMe")
             .Produces<AdminMe>();
+
+        admin.MapAdminAuthEndpoints();
 
         foreach (var contributor in app.ServiceProvider.GetServices<IAdminRouteContributor>())
         {

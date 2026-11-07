@@ -1,7 +1,7 @@
 # 0002 – Admin Area Requirements (Catalogue Management)
 
 - Status: **Approved** by the user on 2026-11-06 (P4-04). All decision points (D-A1 to D-A4, Q-12, Q-14) are resolved; see §9.
-- Date: 2026-11-06 (draft and approval); revised 2026-11-07 for OP-1, OP-2 and the P4-25 decision (option A: password-reset flow covered by integration tests, not Playwright)
+- Date: 2026-11-06 (draft and approval); revised 2026-11-07 for OP-1, OP-2 and the P4-25 decision (option A: password-reset flow covered by integration tests, not Playwright); revised 2026-11-07 for the P4-02 review decisions D-A5 (sign-out refreshes the security stamp) and D-A6 (bootstrap approval switch), and review item L-2 (no 429 on `GET /auth/antiforgery`)
 - Author: Architect
 - Related: `docs/requirements/0001-perfume-catalogue-requirements.md` (BR-27 to BR-30, AC-A1 to AC-A10), `docs/architecture/0001-solution-architecture.md` §6.5, §6.6, §7, `docs/architecture/0002-database-model.md`, ADR-0005, ADR-0007, ADR-0010, ADR-0011, ADR-0014, `docs/tasks/0001-phase-plan.md` (Phase 4)
 
@@ -83,6 +83,8 @@ No new dependency and no change to the approved stack are introduced. The databa
   - Lockout and password policy are as `0001` BR-29 and architecture §7.1. Sign-in is rate-limited (`RateLimiting:AuthPerMinute`, default 5 per IP per minute; 429).
 - **BR-A-02: Session.** Cookie `HttpOnly`, `Secure`, `SameSite=Strict`, `Path=/`; 30 minutes sliding idle timeout; 8 hours absolute; no "remember me" (`0001` AC-A8). An expired session yields 401 on the next admin call, and the UI redirects to `/admin/login`.
 - **BR-A-03: Sign-out.** `POST /admin/auth/sign-out` clears the session cookie and returns 204. It is idempotent: calling it without a session also returns 204.
+  - **Decided (D-A5, user 2026-11-07, option (b)):** when the request carries a valid session, sign-out also **refreshes the signed-in user's security stamp**. A copy of the session cookie (for example taken from a shared machine or a log) therefore stops working at the next security-stamp revalidation, at the latest 5 minutes after sign-out (normal case; see R-A-09 for the fail-open case) (BR-A-09, ADR-0010 §2). Without a session nothing is refreshed and the call still returns 204.
+  - **Accepted side effect:** the refreshed stamp also ends **every other session of the same user** (other browsers or devices) within the same 5-minute interval (normal case; see R-A-09 for the fail-open case). Sign-out is therefore "sign out everywhere" for that user. Risk R-A-09.
 - **BR-A-04: Antiforgery.**
   - Every POST, PUT, PATCH and DELETE under `/api/v1/admin`, **including sign-in, sign-out and the password-reset endpoints**, requires a valid `X-XSRF-TOKEN` header (ADR-0010 §3).
   - A missing or invalid token returns 400 ProblemDetails with `code=antiforgery_invalid`, and nothing is changed (`0001` AC-A5).
@@ -103,7 +105,7 @@ No new dependency and no change to the approved stack are introduced. The databa
   - **Unlock** clears `LockoutEnd` and `AccessFailedCount`.
   - **Set temporary password** (admin-assisted reset, architecture §7.3) replaces the password and refreshes the security stamp. It is the production reset path until the email provider decided in Q-12 is wired and its credential is configured in the deployment secret store (P4-05a, Phase 5), and it remains available afterwards as a fallback.
 - **BR-A-08: Self-protection.** An admin cannot deactivate their own account (422 `cannot_deactivate_self`). The last active admin cannot be deactivated (422 `last_active_admin`).
-- **BR-A-09: Session revocation.** Deactivation, a password change, a password reset and setting a temporary password all refresh the user's security stamp. Existing sessions of that user stop working within 5 minutes (security-stamp validation interval, ADR-0010).
+- **BR-A-09: Session revocation.** Deactivation, a password change, a password reset, setting a temporary password and sign-out with a valid session (BR-A-03, D-A5) all refresh the user's security stamp. Existing sessions of that user stop working within 5 minutes (security-stamp validation interval, ADR-0010). For sign-out this is the normal case; see R-A-09 for the fail-open case.
 
 ### 5.2 Catalogue management
 
@@ -209,15 +211,17 @@ Error status legend used below: **V** = 400 validation, **A** = 400 `antiforgery
 
 | Method & route | Auth | Request | Success | Errors |
 |---|---|---|---|---|
-| `GET /auth/antiforgery` | Anonymous | — | 204, sets `__Host-utp-xsrf` | 429 |
+| `GET /auth/antiforgery` | Anonymous | — | 204, sets `__Host-utp-xsrf` | — |
 | `POST /auth/sign-in` | Anonymous | `{ email, password }` | 200 `AdminMe`, sets session cookie | V, A, U, 429 |
-| `POST /auth/sign-out` | Anonymous (idempotent) | — | 204 | A |
+| `POST /auth/sign-out` | Anonymous (idempotent) | — | 204; with a valid session also refreshes the security stamp (BR-A-03, D-A5) | A |
 | `POST /auth/password-reset/request` | Anonymous | `{ email }` | 202 (always) | V, A, 429 |
 | `POST /auth/password-reset/confirm` | Anonymous | `{ email, token, newPassword }` | 204 | V (invalid or expired token, password policy), A |
 | `POST /auth/change-password` | AdminOnly | `{ currentPassword, newPassword }` | 204 | V, A, U, F |
 | `GET /me` | AdminOnly | — | 200 `AdminMe` | U, F |
 
 `AdminMe { id, email, displayName, roles: string[] }`
+
+**Decided (review L-2, 2026-11-07):** `GET /auth/antiforgery` is **not** rate-limited and lists no 429. The sign-in rate limit (`RateLimiting:AuthPerMinute`, BR-A-01) applies only to `POST /auth/sign-in` and `POST /auth/password-reset/request`, and is not shared with the token endpoint. The OpenAPI contract for `GET /auth/antiforgery` therefore declares no 429 response.
 
 ### 6.3 Admin users
 
@@ -308,6 +312,8 @@ A banner is created with its image in one request because `ImageBlobPath` is NOT
 | Session expires while the admin edits a form | Save returns 401; the UI redirects to sign-in. Unsaved changes are lost (accepted; no draft autosave). |
 | Antiforgery token from before sign-in used after sign-in | 400 `antiforgery_invalid`; the SPA fetches a new token and retries once. |
 | Admin deactivates a colleague who is currently signed in | The colleague's next call fails within 5 minutes (BR-A-09). |
+| Session cookie copied before sign-out and replayed afterwards | Works at most until the next security-stamp revalidation, then 401 (at the latest 5 minutes after sign-out (normal case; see R-A-09 for the fail-open case); BR-A-03, D-A5). |
+| Admin signed in on two devices signs out on one | The other session also ends within 5 minutes (normal case; see R-A-09 for the fail-open case) (accepted side effect of D-A5, R-A-09). |
 | Last active admin is deactivated | 422 `last_active_admin`. |
 | Unknown `categoryIds` or fragrance-note IDs | 400 with the offending field in `errors`. |
 | Variant volume changed to one already used in the product | 409 `duplicate_volume`. |
@@ -322,6 +328,8 @@ A banner is created with its image in one request because `ImageBlobPath` is NOT
 - **AC-A-01:** Given an active admin with valid credentials and a valid antiforgery token, when they sign in, then they receive 200 with `AdminMe`, and a `__Host-utp-admin` cookie with `HttpOnly`, `Secure`, `SameSite=Strict` and `Path=/` is set.
 - **AC-A-02:** Given a **deactivated** admin with the correct password, when they sign in, then they receive the same 401 ProblemDetails as for a wrong password.
 - **AC-A-03:** Given a signed-in admin, when they call `POST /auth/sign-out` with a valid token, then they receive 204 and the next `GET /me` with the same cookie returns 401.
+  - "The same cookie" includes a **copy** of the session cookie taken before sign-out and replayed afterwards. The 401 holds for that copy within the security-stamp revalidation interval: a `GET /me` with the copied cookie made once the 5-minute interval has elapsed (simulated with `TimeProvider`) returns 401 (normal case; see R-A-09 for the fail-open case) (D-A5, BR-A-03). Before the interval elapses the copy may still be accepted; that window is risk R-A-09.
+  - Given the same admin also holds a second session, then after the interval a `GET /me` with the second session's cookie also returns 401 (normal case; see R-A-09 for the fail-open case) (accepted side effect of D-A5).
 - **AC-A-04:** Given no session, when `POST /auth/sign-out` is called with a valid token, then 204.
 - **AC-A-05:** Given the OpenAPI endpoint list, then every `/api/v1/admin/*` endpoint requires `AdminOnly`, except exactly the five endpoints of BR-A-05. `POST /auth/change-password` without a session returns 401.
 - **AC-A-06:** Given a signed-in admin, when 30 minutes pass without a request (simulated with `TimeProvider`), then the next admin call returns 401.
@@ -383,7 +391,7 @@ A banner is created with its image in one request because `ImageBlobPath` is NOT
 
 ## 9. Decisions (resolved by the user, 2026-11-06)
 
-All decision points of the draft are resolved. Two later points, OP-1 and OP-2, were raised after the P4-05 split and were decided by the user on 2026-11-07 (rows below and §12).
+All decision points of the draft are resolved. Two later points, OP-1 and OP-2, were raised after the P4-05 split and were decided by the user on 2026-11-07 (rows below and §12). Two more, D-A5 and D-A6, came from the P4-02 review and were decided by the user on 2026-11-07. They are numbered D-A5 and D-A6 to avoid confusion with the phase-plan decisions D-1 and D-2 (`docs/tasks/0001-phase-plan.md`).
 
 | ID | Question | Decision | Effect |
 |---|---|---|---|
@@ -395,6 +403,8 @@ All decision points of the draft are resolved. Two later points, OP-1 and OP-2, 
 | Q-14 | Enforce two-factor sign-in (TOTP) for admins before go-live? | **Not required before go-live.** | Risk R-A-07 |
 | OP-1 | May the Development `LoggingEmailSender` write the token-bearing reset link to the log? | **Decided 2026-11-07, option B: no.** Reset tokens and reset links are never logged, in any environment; BR-A-31 has no exception. Automated tests obtain the reset link through a test-only capturing email sender (since the P4-25 revision of 2026-11-07, option A: integration tests only, no Playwright). | BR-A-31; architecture §7.3; ADR-0010 §8; P4-05, P4-25 |
 | OP-2 | Behaviour of a reset request outside Development before P4-05a exists? | **Decided 2026-11-07, option A:** 202 as usual, no email sent, and only the fact that no email was sent is logged (no token, no address, no link). | BR-A-31; architecture §7.3; ADR-0010 §8; P4-05 |
+| D-A5 (2026-11-07) | Should sign-out make a copied session cookie stop working? | **Decided 2026-11-07, option (b): yes.** Sign-out with a valid session refreshes the user's security stamp, so a copied cookie stops working within the 5-minute revalidation interval (normal case; see R-A-09 for the fail-open case). Accepted side effect: all other sessions of that user end within the same interval. | BR-A-03, BR-A-09, AC-A-03; architecture §7.1; ADR-0010 §2; risk R-A-09; P4-02 |
+| D-A6 (2026-11-07) | Is `Bootstrap:AllowNonDevelopment` the approval switch for running `bootstrap-admin` outside Development? | **Decided 2026-11-07: yes.** Setting it to `true` is the explicit user-approval gate. It and any temporary `Bootstrap:AdminPassword` are removed straight after use. | ADR-0010 §6; architecture §7.1; `docs/dev-setup.md` §8; P4-02 |
 
 ## 10. Assumptions
 
@@ -419,6 +429,11 @@ All decision points of the draft are resolved. Two later points, OP-1 and OP-2, 
   - Mitigation: admin-assisted reset (BR-A-07) stays available. **To be reviewed before go-live.**
 - **R-A-07 (accepted user decision, 2026-11-06; Q-14):** Admin sign-in has no second factor. A stolen or guessed admin password gives full catalogue and admin-user control. Mitigation: password policy, lockout, sign-in rate limit, `SameSite=Strict` cookie, security-stamp revocation, sign-in audit logs. TOTP remains available in Identity and can be enabled later without a schema change.
 - **R-A-08 (accepted user decision, 2026-11-06; D-A3):** Without a persistent audit table, change history older than the application log retention period cannot be reconstructed, and only the last editor of a row is stored.
+- **R-A-09 (accepted user decision, 2026-11-07; D-A5):** Sign-out refreshes the security stamp, but the stamp is only revalidated every 5 minutes.
+  - A session cookie copied before sign-out can still be used for **up to 5 minutes** after sign-out.
+  - Sign-out also ends every other session of the same user within those 5 minutes. An admin signed in on two devices who signs out on one is signed out on both.
+  - Mitigation: `HttpOnly`, `Secure` and `SameSite=Strict` cookie; 30-minute idle and 8-hour absolute limits; sign-out audit log. Shortening the interval (more frequent database reads) is not part of D-A5 and would need its own decision.
+  - **Fail-open on stamp refresh failure (review L-A):** if `UpdateSecurityStampAsync` fails during sign-out (database outage or concurrency failure), the endpoint still clears the browser cookie and returns 204. A copied cookie and the user's other sessions then stay valid until the 30-minute sliding idle timeout or the 8-hour absolute limit, not the 5-minute window. The failure is logged as event 5103 at Warning with the user ID, client IP and trace ID only (no email, stamp or exception message). Recommendation for operations (Phase 5): alert on event 5103.
 
 ## 12. Task Split for P4-08+ (written into the phase plan)
 

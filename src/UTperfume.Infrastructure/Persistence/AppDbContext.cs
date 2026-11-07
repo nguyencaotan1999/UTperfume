@@ -1,14 +1,19 @@
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using UTperfume.Application.Common;
 using UTperfume.Application.Domain;
+using UTperfume.Infrastructure.Identity;
+using UTperfume.Infrastructure.Persistence.Configurations;
 
 namespace UTperfume.Infrastructure.Persistence;
 
 /// <summary>
 /// The single DbContext and migration history (ADR-0012). Catalogue tables live in schema <c>catalog</c>.
-/// The Identity tables join this context in Phase 4 (<c>AddAdminIdentity</c>).
+/// The ASP.NET Core Identity tables live in schema <c>identity</c> (<c>AddAdminIdentity</c>, ADR-0010).
 /// </summary>
-public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options), ICatalogDbContext
+public class AppDbContext(DbContextOptions<AppDbContext> options)
+    : IdentityDbContext<AdminUser, IdentityRole<int>, int>(options), ICatalogDbContext
 {
     public const string CatalogSchema = "catalog";
 
@@ -36,7 +41,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     {
         ArgumentNullException.ThrowIfNull(modelBuilder);
 
+        base.OnModelCreating(modelBuilder);
         modelBuilder.HasDefaultSchema(CatalogSchema);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
+        IdentityConfigurations.Apply(modelBuilder);
     }
 }

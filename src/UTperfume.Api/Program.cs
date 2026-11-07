@@ -6,6 +6,13 @@ using UTperfume.Application;
 using UTperfume.Application.Common;
 using UTperfume.Infrastructure;
 
+// The bootstrap-admin command takes no arguments, so a password can never be passed on the command line.
+if (BootstrapAdminCommand.IsRequested(args) && !BootstrapAdminCommand.HasOnlyTheCommandName(args))
+{
+    await Console.Error.WriteLineAsync(BootstrapAdminCommand.UsageMessage);
+    return BootstrapAdminCommand.BadUsage;
+}
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddApiProblemDetails();
@@ -22,6 +29,8 @@ builder.Services.AddOpenApi(o => o.AddOperationTransformer<PublicQueryParameterT
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddPublicTraffic();
 builder.Services.AddAdminWriteFoundation();
+builder.Services.AddAdminIdentity();
+builder.Services.AddScoped<UTperfume.Api.Endpoints.Admin.AdminAuthAudit>();
 builder.Services.AddOptions<UTperfume.Application.Features.Sitemap.SitemapOptions>()
     .BindConfiguration(UTperfume.Application.Features.Sitemap.SitemapOptions.SectionName)
     .ValidateDataAnnotations()
@@ -34,10 +43,6 @@ builder.Services.AddOptions<CatalogOptions>()
     .ValidateDataAnnotations()
     .ValidateOnStart();
 
-builder.Services
-    .AddAuthentication(ProblemDetailsAuthenticationHandler.SchemeName)
-    .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, ProblemDetailsAuthenticationHandler>(
-        ProblemDetailsAuthenticationHandler.SchemeName, null);
 builder.Services.AddAuthorizationBuilder()
     .SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build())
     .AddAdminPolicy();
@@ -133,7 +138,14 @@ app.Map("/health/{**path}", UnmatchedApiRoute.Handle)
 // SPA fallback; excludes /api and /health.
 app.MapFallbackToFile("{*path:regex(^(?!api(/|$)|health(/|$)).*$)}", "index.html").AllowAnonymous();
 
+if (BootstrapAdminCommand.IsRequested(args))
+{
+    return await BootstrapAdminCommand.RunAsync(
+        args, app.Services, Console.Out, BootstrapAdminCommand.ConsolePrompt, CancellationToken.None);
+}
+
 app.Run();
+return 0;
 
 /// <summary>Placeholder health payload used by the typed-client sample hook.</summary>
 internal sealed record HealthResponse(string Status);

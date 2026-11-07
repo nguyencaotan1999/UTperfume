@@ -292,7 +292,7 @@ Notes on these endpoints:
 ### 6.5 Admin boundary (ADR-0007, ADR-0010)
 
 - **Route groups:**
-  - `/api/v1/admin/auth/*`: sign-in and password reset. Anonymous by design and rate-limited; an explicit allowlist in the boundary test.
+  - `/api/v1/admin/auth/*`: antiforgery token, sign-in, sign-out and password reset. Anonymous by design; an explicit allowlist in the boundary test. Sign-in and the password-reset request are rate-limited; `GET auth/antiforgery` is not (`0002` §6.2, review L-2).
   - All other `/api/v1/admin/*` routes: `.RequireAuthorization("AdminOnly")`, `Cache-Control: no-store`, no output cache.
   - Every admin route, including `auth/*`, uses `AntiforgeryEndpointFilter` on POST, PUT, PATCH and DELETE.
 - **Policies:**
@@ -350,6 +350,12 @@ The database also enforces the critical rules (see `0002`).
   - Sliding expiry of 30 minutes idle, with an absolute limit of 8 hours. No persistent "remember me".
   - The `OnRedirectToLogin` and `OnRedirectToAccessDenied` events return 401 or 403 ProblemDetails instead of redirecting.
   - `SecurityStampValidatorOptions.ValidationInterval` is 5 minutes, so deactivating an account or changing a password takes effect quickly.
+- **Sign-out (D-A5, user decision 2026-11-07, option (b); `0002` BR-A-03):**
+  - `POST /api/v1/admin/auth/sign-out` clears the session cookie and, when the request carries a valid session, refreshes the user's security stamp (`UserManager.UpdateSecurityStampAsync`).
+  - A copied session cookie therefore returns 401 at the next revalidation, at the latest 5 minutes after sign-out (normal case; see `0002` R-A-09 for the fail-open case) (`0002` AC-A-03).
+  - Accepted side effect: every other session of the same user also ends within that interval. The remaining 5-minute window is risk `0002` R-A-09.
+  - Without a session, nothing is refreshed and the call returns 204 (idempotent).
+  - Fail-open (review L-A, `0002` R-A-09): if `UpdateSecurityStampAsync` fails (database outage or concurrency failure), the endpoint still clears the browser cookie and returns 204. A copied cookie and the user's other sessions then stay valid until the 30-minute sliding idle timeout or the 8-hour absolute limit, not the 5-minute window. The failure is logged as event 5103 at Warning with the user ID, client IP and trace ID only (no email, stamp or exception message). Recommendation for operations (Phase 5): alert on event 5103.
 - **Password policy:**
   - `RequiredLength = 12`, `RequireDigit`, `RequireUppercase`, `RequireLowercase`, `RequiredUniqueChars = 4`, and `RequireNonAlphanumeric = false`, because length matters more than symbol rules.
   - Default Identity PBKDF2 hashing.
@@ -359,19 +365,23 @@ The database also enforces the critical rules (see `0002`).
   - Unknown email, wrong password and locked account all return the same 401 (AC-A7).
 - **Account policy:**
   - No self-registration. `RequireConfirmedAccount = false`; admins are created by admins.
-  - **Bootstrap:** the Api runs a one-off command, `dotnet UTperfume.Api.dll bootstrap-admin`. It creates the first `Catalog.Admin` user from `Bootstrap:AdminEmail` and `Bootstrap:AdminPassword` (user-secrets, or a temporary App Service setting), and only if no admin exists. Running it against production needs user approval.
+  - **Bootstrap:** the Api runs a one-off command, `dotnet UTperfume.Api.dll bootstrap-admin` (locally `dotnet run --project src\UTperfume.Api -- bootstrap-admin`). It creates the first `Catalog.Admin` user from `Bootstrap:AdminEmail`, `Bootstrap:AdminPassword` and optional `Bootstrap:AdminDisplayName` (user-secrets, environment variables, or a temporary App Service setting), and only if no admin exists. Any further argument is refused, so the password is never on the command line. Usage and exit codes: `docs/dev-setup.md` §8.
+    - **Approval gate (D-A6, user decision 2026-11-07; ADR-0010 §6):** outside Development the command runs only with `Bootstrap:AllowNonDevelopment=true`. Setting that switch is the explicit user approval for the run; running it against production needs that approval. `Bootstrap:AllowNonDevelopment` and any temporary `Bootstrap:AdminPassword` setting are removed straight after use.
 - **Two-factor:** TOTP is supported by Identity token providers but not enforced. Q-14, decided 2026-11-06: not required before go-live (risk accepted, `0002` R-A-07).
 
 ### 7.2 CSRF protection
 
-- ASP.NET Core antiforgery is configured with `HeaderName = "X-XSRF-TOKEN"` and the cookie `__Host-utp-xsrf`. That cookie is readable by JavaScript and holds the request token.
+- ASP.NET Core antiforgery is configured with `HeaderName = "X-XSRF-TOKEN"` and uses **two cookies** (ADR-0010 §3), both `Secure`, `SameSite=Strict` and `Path=/`:
+  - `__Host-utp-antiforgery` (`AntiforgeryOptions.Cookie`): `HttpOnly`. It holds the antiforgery **cookie token**. Scripts never need it, so it stays out of their reach.
+  - `__Host-utp-xsrf`: readable by JavaScript (not `HttpOnly`). It holds the **request token**, written by the token endpoint.
+  - *Why two:* antiforgery validation compares a cookie token, sent automatically by the browser, with a request token that the caller must put in the header. Only same-origin script can read `__Host-utp-xsrf` and copy it into `X-XSRF-TOKEN`; a cross-site page cannot.
 - **Getting a token:**
-  - `GET /api/v1/admin/auth/antiforgery` (anonymous) issues the token.
-  - The token is re-issued after sign-in, because antiforgery tokens are bound to the user identity.
+  - `GET /api/v1/admin/auth/antiforgery` (anonymous, 204) sets both cookies. It is not rate-limited (`0002` §6.2, review L-2).
+  - The SPA fetches it again after sign-in and after sign-out, because antiforgery tokens are bound to the user identity.
 - `AntiforgeryEndpointFilter` calls `IAntiforgery.ValidateRequestAsync` on unsafe methods for every admin route, including sign-in, which prevents login CSRF. Failure returns 400 `antiforgery_invalid`.
   - A filter is needed because Minimal APIs only auto-validate form-bound endpoints, and the admin endpoints use JSON.
 - `SameSite=Strict` on the session cookie is a second, independent layer.
-- The openapi-fetch middleware reads the XSRF cookie and sets the header on POST, PUT, PATCH and DELETE.
+- The openapi-fetch middleware reads the `__Host-utp-xsrf` cookie, **URL-decodes** its value, and sets it as the `X-XSRF-TOKEN` header on POST, PUT, PATCH and DELETE. It never reads `__Host-utp-antiforgery` (it cannot, because that cookie is HttpOnly).
 
 ### 7.3 Password reset and email (in Phase 4 scope)
 

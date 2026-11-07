@@ -21,6 +21,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     private readonly string _webRoot;
     private readonly bool _useProjectWebRoot;
     private readonly bool _includeAdminTestRoutes;
+    private readonly bool _useTestAuthentication;
     private readonly Action<IServiceCollection>? _configureServices;
 
     public ApiFactory(
@@ -29,10 +30,12 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         string environment = "Testing",
         bool useProjectWebRoot = false,
         bool includeAdminTestRoutes = false,
+        bool useTestAuthentication = true,
         Action<IServiceCollection>? configureServices = null)
     {
         _configureServices = configureServices;
         _includeAdminTestRoutes = includeAdminTestRoutes;
+        _useTestAuthentication = useTestAuthentication;
         _database = database;
         _overrides = overrides ?? new Dictionary<string, string?>();
         _environment = environment;
@@ -86,6 +89,12 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             }
 
             _configureServices?.Invoke(services);
+
+            if (!_useTestAuthentication)
+            {
+                // The real Identity cookie scheme stays the default (P4-02 tests).
+                return;
+            }
 
             services.AddAuthentication()
                 .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, null);

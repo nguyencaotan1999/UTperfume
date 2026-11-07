@@ -136,6 +136,46 @@ These are settings the app needs outside Development. Set them as App Service ap
 
 Public responses are cached for 60 seconds on the server (output cache, keyed by path and full query string) and carry `Cache-Control: public, max-age=60`. Errors and anything under `/api/v1/admin` are `no-store`.
 
+## 8. Creating the first admin (`bootstrap-admin`)
+
+The `bootstrap-admin` command creates the first `Catalog.Admin` user, and only when no admin exists (ADR-0010 §6, architecture §7.1). Apply the migrations first (section 6); the command refuses to run while migrations are pending.
+
+Settings, supplied through user-secrets or environment variables (never on the command line, never in a committed file):
+
+| Setting | Required | Notes |
+|---|---|---|
+| `Bootstrap:AdminEmail` | yes | Sign-in email of the first admin; it is also the user name. |
+| `Bootstrap:AdminPassword` | yes | Must meet the password policy (architecture §7.1). Never logged or printed. |
+| `Bootstrap:AdminDisplayName` | no | Defaults to `Administrator`. |
+
+Set them with user-secrets, replacing the placeholders with your own values (run `dotnet user-secrets init --project src/UTperfume.Api` once first):
+
+```powershell
+dotnet user-secrets set "Bootstrap:AdminEmail" "<admin-email>" --project src/UTperfume.Api
+dotnet user-secrets set "Bootstrap:AdminPassword" "<admin-password>" --project src/UTperfume.Api
+dotnet user-secrets set "Bootstrap:AdminDisplayName" "<display-name>" --project src/UTperfume.Api
+```
+
+As environment variables the names use a double underscore, for example `Bootstrap__AdminEmail`. Never write a real email address or password into a file or a document. When the command runs in an interactive console and the email or password is not set, it prompts for it (the password is not echoed).
+
+Run it with the same `ConnectionStrings:Catalog` as the app (section 6):
+
+```powershell
+dotnet run --project src\UTperfume.Api -- bootstrap-admin
+```
+
+- **The password is never accepted on the command line.** The command takes no argument after `bootstrap-admin`; any extra argument, including `--Bootstrap:AdminPassword=...`, is refused with exit code 2 and nothing is done.
+- **Outside Development** the command refuses to run unless `Bootstrap:AllowNonDevelopment=true` is set. That switch is the explicit user-approval gate (D-A6, user decision 2026-11-07, `docs/requirements/0002-admin-requirements.md` §9): set it only after the user has approved that run. Production also needs that approval under the project safety rules.
+- **Exit codes:**
+
+  | Code | Meaning |
+  |---|---|
+  | 0 | The admin was created, or an admin already exists and nothing was changed. |
+  | 1 | Failed, nothing created: not Development and `Bootstrap:AllowNonDevelopment` is not `true`; email or password missing; the two prompted passwords differ; the password breaks the policy; migrations are pending; or the `Catalog.Admin` role is missing. |
+  | 2 | Wrong usage: an argument was given after `bootstrap-admin`. |
+
+- **After use**, remove `Bootstrap:AllowNonDevelopment` and the `Bootstrap:AdminPassword` setting straight away, wherever they were set (App Service application setting, environment variable or user-secret), for example `dotnet user-secrets remove "Bootstrap:AdminPassword" --project src/UTperfume.Api`. Close the PowerShell session if you set them as environment variables there.
+
 ## Secrets
 
 - Local secrets go in `dotnet user-secrets` (API project) or environment variables. Nothing secret is committed.

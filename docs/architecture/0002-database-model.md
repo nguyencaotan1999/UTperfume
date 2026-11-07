@@ -267,6 +267,11 @@ The application also validates the full regex.
   - `IsActive bit NOT NULL default 1`. An inactive user cannot sign in, and the check is enforced in the sign-in endpoint.
   - `CreatedAtUtc datetime2(3) NOT NULL`
 - Identity's own columns provide lockout (`LockoutEnd`, `AccessFailedCount`, `LockoutEnabled`), `SecurityStamp` and `ConcurrencyStamp`.
+- **Invariant: user name equals email (review L-4, 2026-11-07).**
+  - Every admin user is stored with `UserName` equal to `Email` (so `NormalizedUserName` equals `NormalizedEmail`). The `bootstrap-admin` command does this, and every other code path that creates a user or changes an email must do the same; **P4-09 (admin users API) must keep it**.
+  - Email uniqueness is enforced by the **unique** index `UserNameIndex` on `NormalizedUserName` (filtered `IS NOT NULL`), through this invariant.
+  - `EmailIndex` on `NormalizedEmail` is **non-unique** (the Identity default). It speeds up lookups but does not prevent duplicate emails on its own.
+  - If the invariant breaks (a user name that differs from the email), the database no longer prevents two users with the same email; only the application checks remain (Identity `RequireUniqueEmail` and the `duplicate_email` pre-check, `0002` BR-A-07, AC-A-08), and a concurrent insert can pass both. Sign-in by email then fails for that address, because sign-in looks the user up with `FindByEmailAsync`, which expects at most one user per normalised email and throws when it finds two.
 - The role `Catalog.Admin` is seeded with `HasData`, using a fixed Id and `ConcurrencyStamp`. Users are never seeded by migrations; they come from the `bootstrap-admin` command.
 - `UpdatedBy` and `CreatedBy` columns in `catalog` hold the Identity user ID as text. There is deliberately no FK, so audit values survive if a user is removed.
 - These tables are added by a **separate migration, `AddAdminIdentity`, in Phase 4 (P4-02)**. It is additive.
