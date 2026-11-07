@@ -19,9 +19,9 @@ function wrapperFor(client: QueryClient, route: string) {
   }
 }
 
-/** Renders with a fresh QueryClient (retry off) and a MemoryRouter. */
-export function renderWithProviders(ui: ReactElement, options: { route?: string } = {}) {
-  const client = createTestQueryClient()
+/** Renders with a fresh QueryClient (retry off, or the given one) and a MemoryRouter. */
+export function renderWithProviders(ui: ReactElement, options: { route?: string; client?: QueryClient } = {}) {
+  const client = options.client ?? createTestQueryClient()
   return { client, ...render(ui, { wrapper: wrapperFor(client, options.route ?? '/') }) }
 }
 

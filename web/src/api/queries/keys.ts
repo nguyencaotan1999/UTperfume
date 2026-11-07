@@ -23,6 +23,11 @@ export const brandKeys = {
   detail: (slug: string) => [...brandKeys.all, 'detail', slug] as const,
 }
 
+export const adminKeys = {
+  all: ['admin'] as const,
+  me: () => [...adminKeys.all, 'me'] as const,
+}
+
 export const categoryKeys = {
   all: ['categories'] as const,
   detail: (slug: string) => [...categoryKeys.all, 'detail', slug] as const,
