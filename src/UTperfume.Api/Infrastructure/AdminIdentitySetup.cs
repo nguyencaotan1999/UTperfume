@@ -106,6 +106,9 @@ internal static class AdminIdentitySetup
         services.AddAntiforgery(o =>
         {
             o.HeaderName = XsrfHeaderName;
+            // The token is accepted from the header only (BR-A-04). A form field name that is never sent keeps the
+            // default store's form fallback from finding a token; AdminAntiforgery also rejects a missing header first.
+            o.FormFieldName = "__utp-form-token-not-accepted";
             // The antiforgery cookie token is HttpOnly. The request token is handed to the SPA in the readable
             // __Host-utp-xsrf cookie by GET /auth/antiforgery.
             o.Cookie.Name = AntiforgeryCookieName;

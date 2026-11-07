@@ -24,6 +24,7 @@ public sealed class AdminWriteFoundationTests : IAsyncLifetime, IDisposable
     private readonly FixedClock _clock = new(ClockStart);
     private readonly ApiFactory _factory;
     private HttpClient _client = null!;
+    private string _xsrf = string.Empty;
 
     public AdminWriteFoundationTests(TestDatabase database)
     {
@@ -41,7 +42,8 @@ public sealed class AdminWriteFoundationTests : IAsyncLifetime, IDisposable
     public async ValueTask InitializeAsync()
     {
         await database.ResetCatalogAsync();
-        _client = _factory.CreateClient();
+        _client = _factory.CreateSecureClient();
+        _xsrf = await FetchXsrfAsync(_client);
     }
 
     public ValueTask DisposeAsync()
@@ -52,11 +54,27 @@ public sealed class AdminWriteFoundationTests : IAsyncLifetime, IDisposable
 
     public void Dispose() => _factory.Dispose();
 
-    private HttpRequestMessage Admin_(HttpMethod method, string url, object? body = null)
+    // P4-03: every admin unsafe request needs the antiforgery token, bound to the test admin and to the client cookie jar.
+    private static async Task<string> FetchXsrfAsync(HttpClient client, string user = Admin)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/admin/auth/antiforgery");
+        request.Headers.Add(TestAuthHandler.UserHeader, user);
+        request.Headers.Add(TestAuthHandler.RolesHeader, "Catalog.Admin");
+        using var response = await client.SendAsync(request, Ct);
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        return AdminIdentityTestSupport.CookieValue(response.SetCookies("__Host-utp-xsrf").Should().ContainSingle().Subject);
+    }
+
+    private HttpRequestMessage Admin_(HttpMethod method, string url, object? body = null, string? xsrf = null)
     {
         var request = new HttpRequestMessage(method, "/api/v1/admin/test" + url);
         request.Headers.Add(TestAuthHandler.UserHeader, Admin);
         request.Headers.Add(TestAuthHandler.RolesHeader, "Catalog.Admin");
+        if (method != HttpMethod.Get)
+        {
+            request.Headers.Add("X-XSRF-TOKEN", xsrf ?? _xsrf);
+        }
+
         if (body is not null)
         {
             request.Content = JsonContent.Create(body);
@@ -273,7 +291,7 @@ public sealed class AdminWriteFoundationTests : IAsyncLifetime, IDisposable
         }
 
         _clock.Advance(TimeSpan.FromHours(2));
-        var request = Admin_(HttpMethod.Put, $"/brands/{id}", new TestBrandBody("Dior 2", null, version));
+        var request = Admin_(HttpMethod.Put, $"/brands/{id}", new TestBrandBody("Dior 2", null, version), await FetchXsrfAsync(_client, "99"));
         request.Headers.Remove(TestAuthHandler.UserHeader);
         request.Headers.Add(TestAuthHandler.UserHeader, "99");
         (await SendAsync(request)).Response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -366,12 +384,13 @@ public sealed class AdminWriteFoundationTests : IAsyncLifetime, IDisposable
                 s.RemoveAll<IOutputCacheStore>();
                 s.AddSingleton<IOutputCacheStore, ThrowingOutputCacheStore>();
             });
-        using var client = factory.CreateClient();
-        var created = await SendWithAsync(client, Admin_(HttpMethod.Post, "/brands", new TestBrandBody("Dior", "dior", null)));
+        using var client = factory.CreateSecureClient();
+        var xsrf = await FetchXsrfAsync(client);
+        var created = await SendWithAsync(client, Admin_(HttpMethod.Post, "/brands", new TestBrandBody("Dior", "dior", null), xsrf));
         var id = created.GetProperty("id").GetInt32();
         var version = created.GetProperty("rowVersion").GetString();
 
-        using var response = await client.SendAsync(Admin_(HttpMethod.Put, $"/brands/{id}", new TestBrandBody("Dior 2", null, version)), Ct);
+        using var response = await client.SendAsync(Admin_(HttpMethod.Put, $"/brands/{id}", new TestBrandBody("Dior 2", null, version), xsrf), Ct);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         await using var db = database.CreateContext();

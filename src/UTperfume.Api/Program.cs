@@ -94,6 +94,8 @@ app.UseAuthentication();
 app.UseAuthorization();
 // The limiter runs before the output cache, so cached responses still count against the limit (AC-X3).
 app.UseRateLimiter();
+// Before the endpoint runs, so a forged token is rejected before a JSON body or multipart form is bound (BR-A-04).
+app.UseMiddleware<AdminAntiforgeryMiddleware>();
 app.UseOutputCache();
 
 app.MapOpenApi().AllowAnonymous();

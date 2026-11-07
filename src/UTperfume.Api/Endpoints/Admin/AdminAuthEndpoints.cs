@@ -35,7 +35,6 @@ internal static class AdminAuthEndpoints
             .AllowAnonymous()
             .RequireRateLimiting(AdminIdentitySetup.SignInRateLimitPolicy)
             .WithoutInheritedAuthResponses()
-            .AddEndpointFilter<AntiforgeryEndpointFilter>()
             .WithName("AdminSignIn")
             .Produces<AdminMe>()
             .ProducesValidationProblem()
@@ -44,7 +43,6 @@ internal static class AdminAuthEndpoints
 
         auth.MapPost("/sign-out", SignOutAsync)
             .AllowAnonymous()
-            .AddEndpointFilter<AntiforgeryEndpointFilter>()
             .WithoutInheritedAuthResponses()
             .WithName("AdminSignOut")
             .Produces(StatusCodes.Status204NoContent)

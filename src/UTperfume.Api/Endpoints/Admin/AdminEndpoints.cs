@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
+using UTperfume.Api.Infrastructure;
 
 namespace UTperfume.Api.Endpoints.Admin;
 
@@ -46,6 +47,7 @@ internal static class AdminEndpoints
     {
         var admin = app.MapGroup(RoutePrefix)
             .RequireAuthorization(AdminPolicy.Name)
+            .RequireAdminAntiforgery()
             .WithTags("Admin")
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status403Forbidden);

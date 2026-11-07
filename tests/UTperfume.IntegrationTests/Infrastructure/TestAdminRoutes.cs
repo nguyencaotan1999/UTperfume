@@ -22,6 +22,20 @@ public sealed record TestWriteResponse(int Id, string RowVersion);
 /// </summary>
 internal sealed class TestAdminRoutes : IAdminRouteContributor
 {
+    private static int _uploadFormReads;
+
+    /// <summary>How many times the multipart test route ran its handler (and so read the form).</summary>
+    public static int UploadFormReads => Volatile.Read(ref _uploadFormReads);
+
+    private static int _jsonBindRuns;
+    private static int _fileBindRuns;
+
+    /// <summary>How many times the JSON-bound test route's handler ran.</summary>
+    public static int JsonBindRuns => Volatile.Read(ref _jsonBindRuns);
+
+    /// <summary>How many times the IFormFile-bound test route's handler ran.</summary>
+    public static int FileBindRuns => Volatile.Read(ref _fileBindRuns);
+
     public void Map(RouteGroupBuilder admin)
     {
         var group = admin.MapGroup("/test");
@@ -156,6 +170,28 @@ internal sealed class TestAdminRoutes : IAdminRouteContributor
                 ? error.ToProblem()
                 : Results.Created($"/api/v1/admin/test/variants/{variant.Id}", new TestWriteResponse(variant.Id, AdminRowVersion.Encode(variant.RowVersion)));
         });
+
+        // Multipart route (P4-03, AC-A-38): reads the form itself, so a counter proves the filter ran before the body was read.
+        group.MapPost("/uploads", async (HttpRequest request, CancellationToken ct) =>
+        {
+            Interlocked.Increment(ref _uploadFormReads);
+            var form = await request.ReadFormAsync(ct);
+            return Results.Ok(new { files = form.Files.Count });
+        });
+
+        // JSON-bound route (M1): proves the token is checked before the body is bound; the counter shows the handler ran.
+        group.MapPost("/json-bind", (TestBrandBody body) =>
+        {
+            Interlocked.Increment(ref _jsonBindRuns);
+            return Results.Ok(new { body.Name });
+        });
+
+        // IFormFile-bound route (M1). DisableAntiforgery: the framework's own check is not the one under test.
+        group.MapPost("/file-bind", (IFormFile file) =>
+        {
+            Interlocked.Increment(ref _fileBindRuns);
+            return Results.Ok(new { file.Length });
+        }).DisableAntiforgery();
 
         group.MapPost("/products/{productId:int}/images", async (
             int productId, AppDbContext db, IAdminWriteSession session, CancellationToken ct) =>
